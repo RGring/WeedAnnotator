@@ -1,4 +1,4 @@
-# Pipeline to semi-automatic annotate grassland weeds on pixel-level.
+# Semi-automatic pixel-level annotation of grassland weeds
 
 ## Introduction
 The WeedAnnotator is applied as following: (i) a human manually annotates a small number of leaves of the considered weed, 
@@ -7,6 +7,8 @@ The WeedAnnotator is applied as following: (i) a human manually annotates a smal
 (iv) the annotator is manually checking the mask proposals and performs corrections or further annotations as needed.
 
 The WeedAnnotator builds upon the assumption that the visual appearance of the plants belonging to a specific species, captured within one field and one day, has remarkable low variance.
+
+![img](./readme_content/into-pic.png "img")
 
 The WeedAnnotator consists of the main steps.
 1. __Synthetic data__ generation by pasting a small number of leaves in weed-free background images.
@@ -45,4 +47,7 @@ __Post-processing predicted masks__
 The full pipeline will be released soon as docker image. Please stay tuned.
 
 ## Examples
+(For better quality check the file _readme_content/example_mask_proposals.pdf_)
+![img](./readme_content/example_mask_proposals.png "img")
+
 
