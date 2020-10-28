@@ -1,0 +1,9 @@
+{
+  "imgs": {
+    "path_to_masks": "sample_data/mask_proposals/raw",
+    "path_to_imgs": "sample_data/test_imgs",
+    "output": "sample_data/mask_proposals/post_processed"
+  },
+  "debug": true
+
+}
