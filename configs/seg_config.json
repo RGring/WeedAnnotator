@@ -1,0 +1,28 @@
+{ "train_ident": "sample_training",
+  "arch": {
+      "args": {
+          "encoder": "resnet18",
+          "encoder_weights": "imagenet"
+      },
+      "type": "PSPNet"
+  },
+  "data": {
+      "data_folder": "sample_data",
+      "train_split": ["synthetic_imgs/10_no_leave_augmentations"],
+      "val_split": ["imgs_val"],
+      "infer_split": ["imgs_val"],
+      "weed_label": "rumex_leaf",
+      "aug": {"input_height": 616,
+              "input_width": 816,
+              "blur": true
+              }
+  },
+  "training": {
+      "batch_size": 8,
+      "epochs": 100,
+      "activation": "sigmoid",
+      "val": true,
+      "val_every_epoch": 3
+  },
+  "logging_path": "sample_data/train_log/"
+}
