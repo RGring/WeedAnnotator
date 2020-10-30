@@ -14,23 +14,13 @@ from semantic_segmentation import utils
 
 DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-if __name__ == "__main__":
-    # create logger
-    logger = logging.getLogger('train_logger')
-    logger.setLevel(logging.INFO)
-
-    # Setting seed for reproducability
-    utils.set_seeds()
-
-    # Loading config
-    config = json.load(open("configs/seg_config.json"))
+def train(config, logger):
     log_path = f"{config['logging_path']}/{config['train_ident']}"
     os.makedirs(log_path, exist_ok=True)
 
     # Saving config
     with open(f"{log_path}/config.json", 'w') as f:
         json.dump(config, f)
-
 
     # Extracting relevant config params
     encoder = config["arch"]["args"]["encoder"]
@@ -111,3 +101,18 @@ if __name__ == "__main__":
                 max_iou_score = valid_logs["iou_score"]
                 logger.info(f"New best model with IoU: {max_iou_score}!")
                 torch.save(model, f"{log_path}/best_model.pth")
+
+
+if __name__ == "__main__":
+    # create logger
+    logger = logging.getLogger('train_logger')
+    logger.setLevel(logging.INFO)
+
+    # Setting seed for reproducability
+    utils.set_seeds()
+
+    # Loading config
+    config = json.load(open("configs/seg_config.json"))
+
+    # train
+    train(config, logger)

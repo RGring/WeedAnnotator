@@ -37,23 +37,13 @@ def save_mask(mask, folder, id):
     cv2.imwrite(f"{folder}/{id}", colored_mask)
 
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description='Inference')
-    parser.add_argument('-c', '--config', default='sample_data/train_log/sample_training/config.json', type=str,
-                        help='The config used to train the model')
-    parser.add_argument('-mo', '--model', default='sample_data/train_log/sample_training/recent_model.pth', type=str,
-                        help='Checkpoint that will be loaded')
-    parser.add_argument('-o', '--output', default='sample_data/mask_proposals', type=str,
-                        help='Folder where to save predcitions')
-
-    args = parser.parse_args()
+def inference(config_file, model_file, output_file):
 
     debug = False
-    utils.set_seeds()
 
-    output = args.output
+    output = output_file
 
-    config = json.load(open(f"{args.config}"))
+    config = json.load(open(f"{config_file}"))
 
     encoder = config["arch"]["args"]["encoder"]
     encoder_weights = config["arch"]["args"]["encoder_weights"]
@@ -63,7 +53,7 @@ if __name__ == "__main__":
 
     preprocessing_fn = smp.encoders.get_preprocessing_fn(encoder, encoder_weights)
 
-    model = torch.load(f"{args.model}")
+    model = torch.load(f"{model_file}")
 
     infer_dataset = WeedDataset(
         f"{data_folder}/{infer_split}",
@@ -93,3 +83,21 @@ if __name__ == "__main__":
             pr_mask = cv2.rotate(pr_mask, cv2.ROTATE_90_COUNTERCLOCKWISE)
         pr_mask = cv2.resize(pr_mask, (id["img_height"], id["img_width"]), interpolation=cv2.INTER_LINEAR)
         save_mask(pr_mask, output, os.path.basename(id["img_id"]))
+
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description='Inference')
+    parser.add_argument('-c', '--config', default='sample_data/train_log/sample_training/config.json', type=str,
+                        help='The config used to train the model')
+    parser.add_argument('-mo', '--model', default='sample_data/train_log/sample_training/recent_model.pth', type=str,
+                        help='Checkpoint that will be loaded')
+    parser.add_argument('-o', '--output', default='sample_data/mask_proposals', type=str,
+                        help='Folder where to save predcitions')
+
+    args = parser.parse_args()
+
+    utils.set_seeds()
+
+    inference(args.config, args.model,args.output)
+
