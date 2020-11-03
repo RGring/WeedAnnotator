@@ -37,34 +37,34 @@ def save_mask(mask, folder, id):
     cv2.imwrite(f"{folder}/{id}", colored_mask)
 
 
-def inference(config_file, model_file, output_file):
+def inference(config_file, model_file, input_data, output):
 
     debug = False
-
-    output = output_file
 
     config = json.load(open(f"{config_file}"))
 
     encoder = config["arch"]["args"]["encoder"]
     encoder_weights = config["arch"]["args"]["encoder_weights"]
 
-    data_folder = config["data"]["data_folder"]
-    infer_split = config["data"]["infer_split"][0]
-
     preprocessing_fn = smp.encoders.get_preprocessing_fn(encoder, encoder_weights)
-
-    model = torch.load(f"{model_file}")
+    model = smp.PSPNet(
+        encoder_name=encoder,
+        encoder_weights=encoder_weights,
+        classes=1,
+        activation=config["training"]["activation"],
+    )
+    model.load_state_dict(torch.load(f"{model_file}")["model_state_dict"])
 
     infer_dataset = WeedDataset(
-        f"{data_folder}/{infer_split}",
-        utils.get_ann_file(data_folder, infer_split),
+        f"{input_data}",
+        f"{input_data}/annotations.xml",
         weed_label=config["data"]["weed_label"],
         augmentation=aug.get_validation_augmentations(config["data"]["aug"]),
         preprocessing=aug.get_preprocessing(preprocessing_fn),
     )
 
     for i in range(len(infer_dataset)):
-        image, gt_mask, id = infer_dataset.get_item_and_props(i)
+        image, gt_mask, id = infer_dataset.get_img_and_props(i)
 
         gt_mask = gt_mask.squeeze()
 
@@ -99,5 +99,5 @@ if __name__ == "__main__":
 
     utils.set_seeds()
 
-    inference(args.config, args.model,args.output)
+    inference(args.config, args.model, args.output)
 

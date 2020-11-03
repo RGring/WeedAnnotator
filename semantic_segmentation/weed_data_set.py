@@ -4,6 +4,7 @@ import math
 import numpy as np
 import os
 from torch.utils.data import Dataset
+import matplotlib.pyplot as plt
 
 from annotation_converter.AnnotationConverter import AnnotationConverter
 
@@ -24,7 +25,10 @@ class WeedDataset(Dataset):
     def __init__(self, images_dir, ann_file, weed_label=None, num_img_split=0, augmentation=None, preprocessing=None):
         self.num_subimg_splits = num_img_split
         self.image_list = self._get_img_list(images_dir)
-        self.ann_file = ann_file
+        if os.path.exists(ann_file):
+            self.ann_file = ann_file
+        else:
+            self.ann_file = None
 
         # convert str names to class values on masks
         self._weed_label = weed_label
@@ -49,7 +53,7 @@ class WeedDataset(Dataset):
     def __len__(self):
         return len(self.image_list)
 
-    def get_item_and_props(self, index):
+    def get_img_and_props(self, index):
         image, mask = self[index]
         return image, mask, self._last_img_props
 
@@ -62,12 +66,13 @@ class WeedDataset(Dataset):
         img_props["img_height"] = image.shape[1]
         img_props["rotate"] = False
 
+        mask = self._create_mask(image_path, image)
+
         # Make sure we always have the same aspect ratio.
         if image.shape[0] < image.shape[1]:
             img_props["rotate"] = True
             image = cv2.rotate(image, cv2.ROTATE_90_CLOCKWISE)
-
-        mask = self._create_mask(image_path, image)
+            mask = cv2.rotate(mask, cv2.ROTATE_90_CLOCKWISE)
 
         if self.num_subimg_splits > 0:
             image = self._get_sub_img(image, img_props["split_x"], img_props["split_y"])
@@ -88,7 +93,7 @@ class WeedDataset(Dataset):
 
     def _create_mask(self, image_path, image):
         mask = np.zeros(image.shape, dtype=np.float32)
-        if self.ann_file:
+        if self.ann_file is not None:
             annotation = AnnotationConverter.read_cvat_by_id(self.ann_file, os.path.basename(image_path))
             polygons = annotation.get_polygons()
             for pol in polygons:

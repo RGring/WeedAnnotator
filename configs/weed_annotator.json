@@ -1,0 +1,22 @@
+{
+  "input_imgs": "sample_data/imgs_val",
+  "mask_proposals": "sample_data/mask_proposals/post_processed",
+  "enable_evaluation": true,
+  "image_composition": {
+    "enable": true,
+    "config": "configs/image_composition.json",
+    "reuse": "sample_data/synthetic_imgs/10_no_leave_augmentation"
+  },
+  "sem_segmentation": {
+    "enable_train": true,
+    "enable_inference": true,
+    "config": "configs/seg_config.json",
+    "reuse_model": "sample_data/train_log/sample_training",
+    "reuse_masks": "sample_data/mask_proposals/raw"
+
+  },
+  "post_processing": {
+    "enable": true,
+    "reuse": "sample_data/mask_proposals/post_processed"
+  }
+}

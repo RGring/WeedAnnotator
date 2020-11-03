@@ -7,19 +7,17 @@
       "type": "PSPNet"
   },
   "data": {
-      "data_folder": "sample_data",
-      "train_split": ["synthetic_imgs/10_no_leave_augmentations"],
-      "val_split": ["imgs_val"],
-      "infer_split": ["imgs_val"],
+      "train_data": ["sample_data/synthetic_imgs/10_no_leave_augmentations"],
+      "val_data": ["sample_data/imgs_val"],
       "weed_label": "rumex_leaf",
-      "aug": {"input_height": 616,
-              "input_width": 816,
+      "aug": {"input_height": 816,
+              "input_width": 616,
               "blur": true
               }
   },
   "training": {
       "batch_size": 8,
-      "epochs": 100,
+      "epochs": 200,
       "activation": "sigmoid",
       "val": true,
       "val_every_epoch": 3

@@ -3,13 +3,13 @@ import albumentations as albu
 
 def get_training_augmentations(aug_config):
     train_augments = []
-    train_augments.append(albu.Resize(aug_config["input_height"], aug_config["input_width"]))
+    train_augments.append(albu.Resize(aug_config["input_height"], aug_config["input_width"], always_apply=True))
     train_augments.append(albu.HorizontalFlip(p=0.5))
     train_augments.append(albu.VerticalFlip(p=0.5))
-    train_augments.append(albu.ShiftScaleRotate(scale_limit=0.5, rotate_limit=[-180, 180]))
+    train_augments.append(albu.ShiftScaleRotate(scale_limit=[-0.2, 0.2], rotate_limit=[-180, 180], p=1.0))
 
     if aug_config["blur"]:
-        train_augments.append(albu.motion_blur(blur_limit=[7, 21]))
+        train_augments.append(albu.MotionBlur(blur_limit=[13, 21], p=0.3))
     return albu.Compose(train_augments)
 
 

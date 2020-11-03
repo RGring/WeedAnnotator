@@ -4,17 +4,32 @@ from torch.utils.data import DataLoader
 import segmentation_models_pytorch as smp
 import os
 
-import logging
-logging.basicConfig(format='%(asctime)s %(message)s')
-
 from semantic_segmentation.weed_data_set import WeedDataset
-from semantic_segmentation import aug
 from semantic_segmentation.losses import LovaszLoss
-from semantic_segmentation import utils
+from semantic_segmentation import utils, aug
+from catalyst import dl, metrics
 
 DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-def train(config, logger):
+class CustomRunner(dl.Runner):
+
+    def _handle_batch(self, batch):
+        # model train/valid step
+        x, y = batch
+        y_hat = self.model(x)
+
+        loss = LovaszLoss()(y_hat, y)
+        iou = metrics.iou(y_hat, y, threshold=0.5, activation=None)
+        self.batch_metrics.update(
+            {"loss": loss, "iou": iou}
+        )
+
+        if self.is_train_loader:
+            loss.backward()
+            self.optimizer.step()
+            self.optimizer.zero_grad()
+
+def train(config):
     log_path = f"{config['logging_path']}/{config['train_ident']}"
     os.makedirs(log_path, exist_ok=True)
 
@@ -27,9 +42,8 @@ def train(config, logger):
     encoder_weights = config["arch"]["args"]["encoder_weights"]
 
     # ToDo Make possible to train on several folders/annotation files
-    data_folder = config["data"]["data_folder"]
-    train_split = config["data"]["train_split"][0]
-    val_split = config["data"]["val_split"][0]
+    train_data = config["data"]["train_data"][0]
+    val_data = config["data"]["val_data"][0]
 
     # Create model
     model = smp.PSPNet(
@@ -42,72 +56,49 @@ def train(config, logger):
     preprocessing_fn = smp.encoders.get_preprocessing_fn(encoder, encoder_weights)
 
     train_dataset = WeedDataset(
-        f"{data_folder}/{train_split}",
-        f"{data_folder}/{train_split}/annotations.xml",
+        f"{train_data}",
+        f"{train_data}/annotations.xml",
         weed_label=config["data"]["weed_label"],
         augmentation=aug.get_training_augmentations(config["data"]["aug"]),
         preprocessing=aug.get_preprocessing(preprocessing_fn),
     )
 
     val_dataset = WeedDataset(
-        f"{data_folder}/{val_split}",
-        f"{data_folder}/{val_split}/annotations.xml",
+        f"{val_data}",
+        f"{val_data}/annotations.xml",
         weed_label=config["data"]["weed_label"],
         augmentation=aug.get_validation_augmentations(config["data"]["aug"]),
         preprocessing=aug.get_preprocessing(preprocessing_fn),
     )
 
-    train_loader = DataLoader(train_dataset, batch_size=config["training"]["batch_size"], shuffle=True, num_workers=4)
-    valid_loader = DataLoader(val_dataset, batch_size=config["training"]["batch_size"], shuffle=False, num_workers=4)
+    train_loader = DataLoader(train_dataset, batch_size=config["training"]["batch_size"], shuffle=True, num_workers=1)
+    valid_loader = DataLoader(val_dataset, batch_size=config["training"]["batch_size"], shuffle=False, num_workers=1)
+    loaders = {"train": train_loader, "valid": valid_loader}
 
-    loss = LovaszLoss()
+    lr  = 0.0001
+    trainable_params = [{'params': filter(lambda p: p.requires_grad, model.decoder.parameters())},
+                        {'params': filter(lambda p: p.requires_grad, model.encoder.parameters()),
+                         'lr': lr / 10}]
 
-    # ToDo: Compute IoU over whole dataset.
-    metrics = [
-        smp.utils.metrics.IoU(threshold=0.5),
-    ]
-    optimizer = torch.optim.Adam([
-        dict(params=model.parameters(), lr=0.0001, weight_decay=0.00001),
-    ])
+    optimizer = torch.optim.Adam(trainable_params, lr=lr, weight_decay=lr*0.1)
+    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, 30, gamma=0.5)
 
-    train_epoch = smp.utils.train.TrainEpoch(
-        model,
-        loss=loss,
-        metrics=metrics,
+    # model training
+    runner = CustomRunner()
+    runner.train(
+        model=model,
         optimizer=optimizer,
-        device=DEVICE,
+        scheduler=scheduler,
+        loaders=loaders,
+        main_metric="iou",
+        # IoU needs to be maximized.
+        minimize_metric=False,
+        logdir=log_path,
+        num_epochs=config["training"]["epochs"],
         verbose=True,
     )
-
-    valid_epoch = smp.utils.train.ValidEpoch(
-        model,
-        loss=loss,
-        metrics=metrics,
-        device=DEVICE,
-        verbose=True,
-    )
-
-    max_iou_score = 0
-
-    for i in range(config["training"]["epochs"]):
-        logger.info(f'Epoch: {i}')
-
-        train_logs = train_epoch.run(train_loader)
-        if config["training"]["val"] and i % config["training"]["val_every_epoch"] == 0:
-            valid_logs = valid_epoch.run(valid_loader)
-            torch.save(model, f"{log_path}/recent_model.pth")
-
-            if valid_logs["iou_score"] > max_iou_score:
-                max_iou_score = valid_logs["iou_score"]
-                logger.info(f"New best model with IoU: {max_iou_score}!")
-                torch.save(model, f"{log_path}/best_model.pth")
-
 
 if __name__ == "__main__":
-    # create logger
-    logger = logging.getLogger('train_logger')
-    logger.setLevel(logging.INFO)
-
     # Setting seed for reproducability
     utils.set_seeds()
 
@@ -115,4 +106,4 @@ if __name__ == "__main__":
     config = json.load(open("configs/seg_config.json"))
 
     # train
-    train(config, logger)
+    train(config)

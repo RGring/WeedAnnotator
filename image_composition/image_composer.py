@@ -53,7 +53,7 @@ class ImageComposer:
         os.makedirs(img_path, exist_ok=True)
 
         # save config
-        with open(f"{img_path}/confg.json", "w") as write_file:
+        with open(f"{img_path}/config.json", "w") as write_file:
             json.dump(config, write_file)
         return img_path
 
