@@ -8,8 +8,8 @@ import os
 import logging
 logging.basicConfig(format='%(asctime)s %(message)s')
 
-from annotation_converter.AnnotationConverter import AnnotationConverter
-from full_pipeline import metrics
+from weed_annotator.annotation_converter.AnnotationConverter import AnnotationConverter
+from weed_annotator.full_pipeline import metrics
 
 
 class MaskProposalsEvaluator:

@@ -1,12 +1,11 @@
-import csv
 import glob
 import cv2
 import json
 import os
 import xml.etree.cElementTree as ET
-from annotation_converter.BoundingBox import BoundingBox
-from annotation_converter.Polygon import Polygon
-from annotation_converter.Annotation import Annotation
+from weed_annotator.annotation_converter.BoundingBox import BoundingBox
+from weed_annotator.annotation_converter.Polygon import Polygon
+from weed_annotator.annotation_converter.Annotation import Annotation
 
 
 class AnnotationConverter:

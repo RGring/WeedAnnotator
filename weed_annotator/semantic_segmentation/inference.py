@@ -10,9 +10,9 @@ import torch
 import logging
 logging.basicConfig(format='%(asctime)s %(message)s')
 
-from semantic_segmentation import utils
-from semantic_segmentation.weed_data_set import WeedDataset
-from semantic_segmentation import aug
+from weed_annotator.semantic_segmentation import utils
+from weed_annotator.semantic_segmentation.weed_data_set import WeedDataset
+from weed_annotator.semantic_segmentation import aug
 
 DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 

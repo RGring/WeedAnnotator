@@ -5,11 +5,11 @@ import json
 import os
 import numpy as np
 import matplotlib.pyplot as plt
-from annotation_converter.AnnotationConverter import AnnotationConverter
-from annotation_converter.Annotation import Annotation
-from annotation_converter.Polygon import Polygon
+from weed_annotator.annotation_converter.AnnotationConverter import AnnotationConverter
+from weed_annotator.annotation_converter.Annotation import Annotation
+from weed_annotator.annotation_converter.Polygon import Polygon
 import albumentations as albu
-from image_composition.leave_sampler import LeaveSampler
+from weed_annotator.image_composition.leave_sampler import LeaveSampler
 import sys
 
 SEED = 43

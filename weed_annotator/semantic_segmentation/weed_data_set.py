@@ -6,7 +6,7 @@ import os
 from torch.utils.data import Dataset
 import matplotlib.pyplot as plt
 
-from annotation_converter.AnnotationConverter import AnnotationConverter
+from weed_annotator.annotation_converter.AnnotationConverter import AnnotationConverter
 
 
 class WeedDataset(Dataset):

@@ -1,7 +1,7 @@
 {
   "input_imgs": "sample_data/imgs_val",
   "mask_proposals": "sample_data/mask_proposals/post_processed",
-  "enable_evaluation": true,
+  "enable_evaluation": false,
   "image_composition": {
     "enable": true,
     "config": "configs/image_composition.json",

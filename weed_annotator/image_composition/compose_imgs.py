@@ -1,7 +1,7 @@
 import numpy as np
 import random
 import json
-from image_composition.image_composer import ImageComposer
+from weed_annotator.image_composition.image_composer import ImageComposer
 
 SEED = 43
 
@@ -18,4 +18,5 @@ if __name__ == "__main__":
     random.seed(SEED)
     collage_config_file = "configs/image_composition.json"
     config = json.load(open(collage_config_file))
+    compose_images(config)
 

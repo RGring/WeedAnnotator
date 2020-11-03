@@ -4,9 +4,9 @@ from torch.utils.data import DataLoader
 import segmentation_models_pytorch as smp
 import os
 
-from semantic_segmentation.weed_data_set import WeedDataset
-from semantic_segmentation.losses import LovaszLoss
-from semantic_segmentation import utils, aug
+from weed_annotator.semantic_segmentation.weed_data_set import WeedDataset
+from weed_annotator.semantic_segmentation.losses import LovaszLoss
+from weed_annotator.semantic_segmentation import utils, aug
 from catalyst import dl, metrics
 
 DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")

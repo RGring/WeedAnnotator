@@ -5,12 +5,12 @@ import shutil
 import logging
 logging.basicConfig(format='%(asctime)s %(message)s')
 
-from semantic_segmentation import utils
-from semantic_segmentation.train import train
-from semantic_segmentation.inference import inference
-from post_processing.post_process_masks import post_process_masks
-from full_pipeline.mask_proposal_evaluator import MaskProposalsEvaluator
-from image_composition.compose_imgs import compose_images
+from weed_annotator.semantic_segmentation import utils
+from weed_annotator.semantic_segmentation.train import train
+from weed_annotator.semantic_segmentation.inference import inference
+from weed_annotator.post_processing.post_process_masks import post_process_masks
+from weed_annotator.full_pipeline.mask_proposal_evaluator import MaskProposalsEvaluator
+from weed_annotator.image_composition.compose_imgs import compose_images
 
 if __name__ == "__main__":
     # create logger
@@ -37,7 +37,7 @@ if __name__ == "__main__":
         logger.info("Training semantic segmentation model.")
         if pipeline_config["image_composition"]["enable"]:
             train_config["data"]["train_split"] = [train_folder]
-        train(train_config, logger)
+        train(train_config)
         log_folder = f"{train_config['logging_path']}/{train_config['train_ident']}"
     else:
         log_folder = pipeline_config["sem_segmentation"]["reuse_model"]

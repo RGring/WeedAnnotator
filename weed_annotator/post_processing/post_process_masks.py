@@ -2,7 +2,7 @@ import argparse
 import glob
 import cv2
 import os
-from post_processing.post_processor import PostProcessor
+from weed_annotator.post_processing.post_processor import PostProcessor
 import matplotlib.pyplot as plt
 import logging
 logging.basicConfig(format='%(asctime)s %(message)s')
@@ -49,7 +49,7 @@ if __name__ == "__main__":
                         help='Generated mask proposals')
     parser.add_argument('-i', '--img_folder', default='sample_data/imgs_val', type=str,
                         help='Corresponding input images of mask proposals')
-    parser.add_argument('-o', '--output', default='sample_data/mask_proposals', type=str,
+    parser.add_argument('-o', '--output', default='sample_data/mask_proposals/post_processed', type=str,
                         help='Folder where to save post-processed mask proposals')
 
     args = parser.parse_args()

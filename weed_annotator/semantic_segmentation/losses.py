@@ -1,5 +1,5 @@
 import segmentation_models_pytorch as smp
-from semantic_segmentation.lovasz_losses import lovasz_softmax, lovasz_hinge
+from weed_annotator.semantic_segmentation.lovasz_losses import lovasz_softmax, lovasz_hinge
 
 class LovaszLoss(smp.utils.base.Loss):
 
