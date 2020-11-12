@@ -28,6 +28,7 @@ class WeedDataset(Dataset):
         if os.path.exists(ann_file):
             self.ann_file = ann_file
         else:
+            print(f"Note: No annotation file provided for {images_dir}.")
             self.ann_file = None
 
         # convert str names to class values on masks

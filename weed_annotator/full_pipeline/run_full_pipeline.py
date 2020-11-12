@@ -34,9 +34,8 @@ if __name__ == "__main__":
     # Training Semantic Segmemntation
     train_config = json.load(open("configs/seg_config.json"))
     if pipeline_config["sem_segmentation"]["enable_train"]:
-        logger.info("Training semantic segmentation model.")
-        if pipeline_config["image_composition"]["enable"]:
-            train_config["data"]["train_split"] = [train_folder]
+        train_config["data"]["train_data"] = [train_folder]
+        logger.info(f"Training semantic segmentation model on: {train_folder}.")
         train(train_config)
         log_folder = f"{train_config['logging_path']}/{train_config['train_ident']}"
     else:
@@ -45,7 +44,7 @@ if __name__ == "__main__":
     # Inference
     input_data = pipeline_config["input_imgs"]
     if pipeline_config["sem_segmentation"]["enable_inference"]:
-        logger.info("Generating mask predictions.")
+        logger.info(f"Generating mask predictions for: {input_data}.")
         mp_raw = "/tmp/mask_proposals/raw"
         os.makedirs(mp_raw)
         inference(f"{log_folder}/config.json", f"{log_folder}/checkpoints/last.pth", input_data, mp_raw)
@@ -63,7 +62,7 @@ if __name__ == "__main__":
 
     # Evaluation
     if pipeline_config["enable_evaluation"] and os.path.exists(f"{input_data}/annotations.xml"):
-        logger.info("Evaluation of pipeline performance.")
+        logger.info(f"Evaluation of pipeline performance on: {input_data}.")
         me = MaskProposalsEvaluator(input_data, train_config["data"]["weed_label"])
         result_raw = me.evaluate(mp_raw)
         with open(f"{log_folder}/eval_raw.json", 'w') as f:
@@ -76,14 +75,6 @@ if __name__ == "__main__":
     if pipeline_config["sem_segmentation"]["enable_inference"]:
         shutil.rmtree(f"{mp_raw}")
 
-    # ToDo: Save evaluation
-
-    # General ToDo:
-    # Think about common parameter concept (config, argparse, etc.)
-    # Handle case, if no validation dataset is present (no evaluation during training and here in the full pipeline").
-    # Test if pipeline obtains similar results as reported in paper.
-    # Make sure naming is intuitive
-    # Docker
 
 
 
