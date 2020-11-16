@@ -53,8 +53,7 @@ def inference(config_file, model_file, input_data, output):
     model.load_state_dict(torch.load(f"{model_file}")["model_state_dict"])
 
     infer_dataset = WeedDataset(
-        f"{input_data}",
-        f"{input_data}/annotations.xml",
+        [input_data],
         weed_label=config["data"]["weed_label"],
         augmentation=aug.get_validation_augmentations(config["data"]["aug"]),
         preprocessing=aug.get_preprocessing(preprocessing_fn),
@@ -87,14 +86,16 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Inference')
     parser.add_argument('-c', '--config', default='sample_data/train_log/sample_training/config.json', type=str,
                         help='The config used to train the model')
-    parser.add_argument('-mo', '--model', default='sample_data/train_log/sample_training/recent_model.pth', type=str,
+    parser.add_argument('-mo', '--model', default='sample_data/train_log/sample_training/checkpoints/best.pth', type=str,
                         help='Checkpoint that will be loaded')
-    parser.add_argument('-o', '--output', default='sample_data/mask_proposals', type=str,
+    parser.add_argument('-i', '--input_data', default='sample_data/imgs_val', type=str,
+                        help='Folder where to save predcitions')
+    parser.add_argument('-o', '--output', default='sample_data/mask_proposals/raw', type=str,
                         help='Folder where to save predcitions')
 
     args = parser.parse_args()
 
     utils.set_seeds()
 
-    inference(args.config, args.model, args.output)
+    inference(args.config, args.model, args.input_data, args.output)
 
