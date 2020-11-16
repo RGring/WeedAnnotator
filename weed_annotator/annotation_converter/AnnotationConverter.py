@@ -108,11 +108,14 @@ class AnnotationConverter:
 
     @staticmethod
     def read_cvat_by_id(path_to_annotation_file, img_id):
-        root = ET.parse(path_to_annotation_file).getroot()
-        for img in root.findall('image'):
-            if img_id == img.attrib["name"]:
-                annotation = AnnotationConverter._cvat_to_annotation(img)
-                return annotation
+        try:
+            root = ET.parse(path_to_annotation_file).getroot()
+            for img in root.findall('image'):
+                if img_id == img.attrib["name"]:
+                    annotation = AnnotationConverter._cvat_to_annotation(img)
+                    return annotation
+        except FileNotFoundError:
+            return None
 
     @staticmethod
     def _cvat_to_annotation(img_xml_info):

@@ -22,14 +22,9 @@ class WeedDataset(Dataset):
 
     """
 
-    def __init__(self, images_dir, ann_file, weed_label=None, num_img_split=0, augmentation=None, preprocessing=None):
+    def __init__(self, images_dirs, weed_label=None, num_img_split=0, augmentation=None, preprocessing=None):
         self.num_subimg_splits = num_img_split
-        self.image_list = self._get_img_list(images_dir)
-        if os.path.exists(ann_file):
-            self.ann_file = ann_file
-        else:
-            print(f"Note: No annotation file provided for {images_dir}.")
-            self.ann_file = None
+        self.image_list = self._get_img_list(images_dirs)
 
         # convert str names to class values on masks
         self._weed_label = weed_label
@@ -38,17 +33,18 @@ class WeedDataset(Dataset):
         self.preprocessing = preprocessing
         self._last_img_props = None
 
-    def _get_img_list(self, images_dir):
+    def _get_img_list(self, images_dirs):
         files = []
-        file_ids = glob.glob(images_dir + '/*.jpg')
-        file_ids.sort()
-        for id in file_ids:
-            if self.num_subimg_splits > 0:
-                for i in range(self.num_subimg_splits):
-                    for j in range(self.num_subimg_splits):
-                        files.append({"img_id": id, "sub_img_id": f"{id}_{i}_{j}", "split_x": i, "split_y": j})
-            else:
-                files.append({"img_id": id, "sub_img_id": f"{id}_{0}_{0}", "split_x": 0, "split_y": 0})
+        for images_dir in images_dirs:
+            file_ids = glob.glob(images_dir + '/*.jpg')
+            file_ids.sort()
+            for id in file_ids:
+                if self.num_subimg_splits > 0:
+                    for i in range(self.num_subimg_splits):
+                        for j in range(self.num_subimg_splits):
+                            files.append({"img_id": id, "sub_img_id": f"{id}_{i}_{j}", "split_x": i, "split_y": j})
+                else:
+                    files.append({"img_id": id, "sub_img_id": f"{id}_{0}_{0}", "split_x": 0, "split_y": 0})
         return files
 
     def __len__(self):
@@ -74,7 +70,8 @@ class WeedDataset(Dataset):
             img_props["rotate"] = True
             image = cv2.rotate(image, cv2.ROTATE_90_CLOCKWISE)
             mask = cv2.rotate(mask, cv2.ROTATE_90_CLOCKWISE)
-
+        # plt.imshow(cv2.addWeighted(mask.astype(np.uint8)*255, 1, image, 0.8, 0))
+        # plt.show()
         if self.num_subimg_splits > 0:
             image = self._get_sub_img(image, img_props["split_x"], img_props["split_y"])
             mask = self._get_sub_img(mask, img_props["split_x"], img_props["split_y"])
@@ -94,8 +91,8 @@ class WeedDataset(Dataset):
 
     def _create_mask(self, image_path, image):
         mask = np.zeros(image.shape, dtype=np.float32)
-        if self.ann_file is not None:
-            annotation = AnnotationConverter.read_cvat_by_id(self.ann_file, os.path.basename(image_path))
+        annotation = AnnotationConverter.read_cvat_by_id(f"{os.path.dirname(image_path)}/annotations.xml", os.path.basename(image_path))
+        if annotation is not None:
             polygons = annotation.get_polygons()
             for pol in polygons:
                 if self._weed_label is not None:

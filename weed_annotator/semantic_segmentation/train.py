@@ -42,8 +42,8 @@ def train(config):
     encoder_weights = config["arch"]["args"]["encoder_weights"]
 
     # ToDo Make possible to train on several folders/annotation files
-    train_data = config["data"]["train_data"][0]
-    val_data = config["data"]["val_data"][0]
+    train_data = config["data"]["train_data"]
+    val_data = config["data"]["val_data"]
 
     # Create model
     model = smp.PSPNet(
@@ -56,16 +56,14 @@ def train(config):
     preprocessing_fn = smp.encoders.get_preprocessing_fn(encoder, encoder_weights)
 
     train_dataset = WeedDataset(
-        f"{train_data}",
-        f"{train_data}/annotations.xml",
+        train_data,
         weed_label=config["data"]["weed_label"],
         augmentation=aug.get_training_augmentations(config["data"]["aug"]),
         preprocessing=aug.get_preprocessing(preprocessing_fn),
     )
 
     val_dataset = WeedDataset(
-        f"{val_data}",
-        f"{val_data}/annotations.xml",
+        val_data,
         weed_label=config["data"]["weed_label"],
         augmentation=aug.get_validation_augmentations(config["data"]["aug"]),
         preprocessing=aug.get_preprocessing(preprocessing_fn),
