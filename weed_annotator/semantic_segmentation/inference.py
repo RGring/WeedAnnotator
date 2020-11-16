@@ -51,6 +51,7 @@ def inference(config_file, model_file, input_data, output):
         activation=config["training"]["activation"],
     )
     model.load_state_dict(torch.load(f"{model_file}")["model_state_dict"])
+    model.to(DEVICE)
 
     infer_dataset = WeedDataset(
         [input_data],
