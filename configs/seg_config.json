@@ -18,6 +18,7 @@
   "training": {
       "batch_size": 8,
       "epochs": 200,
+      "lr": 0.001,
       "activation": "sigmoid",
       "val": true,
       "val_every_epoch": 3

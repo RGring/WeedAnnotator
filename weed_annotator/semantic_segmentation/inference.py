@@ -7,9 +7,6 @@ import os
 import segmentation_models_pytorch as smp
 import torch
 
-import logging
-logging.basicConfig(format='%(asctime)s %(message)s')
-
 from weed_annotator.semantic_segmentation import utils
 from weed_annotator.semantic_segmentation.weed_data_set import WeedDataset
 from weed_annotator.semantic_segmentation import aug

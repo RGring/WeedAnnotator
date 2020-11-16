@@ -5,7 +5,6 @@ import os
 from weed_annotator.post_processing.post_processor import PostProcessor
 import matplotlib.pyplot as plt
 import logging
-logging.basicConfig(format='%(asctime)s %(message)s')
 
 def mask_on_img(mask, img):
     out = cv2.addWeighted(mask, 1, img, 0.8, 0)
@@ -16,15 +15,24 @@ def post_process_masks(img_folder, mask_folder, output_folder):
     path_to_imgs = img_folder
     mask_files = glob.glob(f"{mask_folder}/*.png")
 
+
+    # create logger
+    logger = logging.getLogger('post_process_masks')
+    logger.setLevel(logging.INFO)
+    fh = logging.StreamHandler()
+    fh_formatter = logging.Formatter('%(asctime)s %(message)s')
+    fh.setFormatter(fh_formatter)
+    logger.addHandler(fh)
+
     if not mask_files:
-        logging.warning("Mask folder empty. No post-processing action.")
+        logger.warning("Mask folder empty. No post-processing action.")
 
     for mask_file in mask_files:
         id = os.path.basename(mask_file).replace(".png", "")
         mask_raw = cv2.imread(mask_file, cv2.IMREAD_UNCHANGED)
         img = cv2.imread(f"{path_to_imgs}/{id}.jpg", cv2.IMREAD_UNCHANGED)
         if img is None:
-            logging.warning(f"No img with id {id}")
+            logger.warning(f"No img with id {id}")
 
         mask_post_proc = PostProcessor.post_graphcut(img, mask_raw)
         mask_post_proc = PostProcessor.post_open(mask_post_proc)

@@ -6,7 +6,6 @@ import numpy as np
 import os
 
 import logging
-logging.basicConfig(format='%(asctime)s %(message)s')
 
 from weed_annotator.annotation_converter.AnnotationConverter import AnnotationConverter
 from weed_annotator.full_pipeline import metrics
@@ -17,8 +16,14 @@ class MaskProposalsEvaluator:
         self._img_folder = img_folder
         self._gt_annotation_file = f"{self._img_folder}/annotations.xml"
         self._weed_label = weed_label
+
+        # Logging
         self._logger = logging.getLogger('eval_logger')
         self._logger.setLevel(logging.INFO)
+        fh = logging.StreamHandler()
+        fh_formatter = logging.Formatter('%(asctime)s %(message)s')
+        fh.setFormatter(fh_formatter)
+        self._logger.addHandler(fh)
         self._debug = False
 
     def evaluate(self, pred_mask_folder):

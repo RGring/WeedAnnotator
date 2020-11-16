@@ -75,13 +75,13 @@ def train(config):
     valid_loader = DataLoader(val_dataset, batch_size=config["training"]["batch_size"], shuffle=False, num_workers=1)
     loaders = {"train": train_loader, "valid": valid_loader}
 
-    lr  = 0.0001
+    lr  = config["training"]["lr"]
     trainable_params = [{'params': filter(lambda p: p.requires_grad, model.decoder.parameters())},
                         {'params': filter(lambda p: p.requires_grad, model.encoder.parameters()),
                          'lr': lr / 10}]
 
     optimizer = torch.optim.Adam(trainable_params, lr=lr, weight_decay=lr*0.1)
-    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, 30, gamma=0.5)
+    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, 30, gamma=0.1)
 
     # model training
     runner = CustomRunner()

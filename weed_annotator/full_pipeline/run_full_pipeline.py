@@ -1,9 +1,9 @@
+import argparse
 import json
 import os
 import shutil
 
 import logging
-logging.basicConfig(format='%(asctime)s %(message)s')
 
 from weed_annotator.semantic_segmentation import utils
 from weed_annotator.semantic_segmentation.train import train
@@ -13,26 +13,35 @@ from weed_annotator.full_pipeline.mask_proposal_evaluator import MaskProposalsEv
 from weed_annotator.image_composition.compose_imgs import compose_images
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description='weed_annotator')
+    parser.add_argument('-c', '--config_folder', default='configs', type=str,
+                        help='Folder with pipeline configs')
+    args = parser.parse_args()
+
     # create logger
-    logger = logging.getLogger('train_logger')
+    logger = logging.getLogger('weed_annotator_logger')
     logger.setLevel(logging.INFO)
+    fh = logging.StreamHandler()
+    fh_formatter = logging.Formatter('%(asctime)s %(message)s')
+    fh.setFormatter(fh_formatter)
+    logger.addHandler(fh)
 
     # Setting seed for reproducability
     utils.set_seeds()
 
-    pipeline_config = json.load(open("configs/weed_annotator.json"))
+    pipeline_config = json.load(open(f"{args.config_folder}/weed_annotator.json"))
 
     # Image Composition
     if pipeline_config["image_composition"]["enable"]:
         logger.info("Generating image compositions for training.")
-        img_comp_config = json.load(open("configs/image_composition.json"))
+        img_comp_config = json.load(open(f"{args.config_folder}/image_composition.json"))
         compose_images(img_comp_config)
         train_folder = img_comp_config["folders"]["out_folder"]
     else:
         train_folder = pipeline_config["image_composition"]["reuse"]
 
     # Training Semantic Segmemntation
-    train_config = json.load(open("configs/seg_config.json"))
+    train_config = json.load(open(f"{args.config_folder}/seg_config.json"))
     if pipeline_config["sem_segmentation"]["enable_train"]:
         train_config["data"]["train_data"] = [train_folder]
         logger.info(f"Training semantic segmentation model on: {train_folder}.")
@@ -47,7 +56,7 @@ if __name__ == "__main__":
         logger.info(f"Generating mask predictions for: {input_data}.")
         mp_raw = "/tmp/mask_proposals/raw"
         os.makedirs(mp_raw)
-        inference(f"{log_folder}/config.json", f"{log_folder}/checkpoints/last.pth", input_data, mp_raw)
+        inference(f"{log_folder}/config.json", f"{log_folder}/checkpoints/best.pth", input_data, mp_raw)
     else:
         mp_raw = pipeline_config["sem_segmentation"]["reuse_masks"]
 
