@@ -43,7 +43,7 @@ if __name__ == "__main__":
     # Training Semantic Segmemntation
     train_config = json.load(open(f"{args.config_folder}/seg_config.json"))
     if pipeline_config["sem_segmentation"]["enable_train"]:
-        train_config["data"]["train_data"] = [train_folder]
+        train_config["data"]["train_data"] = train_folder
         logger.info(f"Training semantic segmentation model on: {train_folder}.")
         train(train_config)
         log_folder = f"{train_config['logging_path']}/{train_config['train_ident']}"
@@ -54,7 +54,7 @@ if __name__ == "__main__":
     input_data = pipeline_config["input_imgs"]
     if pipeline_config["sem_segmentation"]["enable_inference"]:
         logger.info(f"Generating mask predictions for: {input_data}.")
-        mp_raw = "/tmp/mask_proposals/raw"
+        mp_raw = f"/tmp/{train_config['train_ident']}/mask_proposals/raw"
         os.makedirs(mp_raw)
         inference(f"{log_folder}/config.json", f"{log_folder}/checkpoints/best.pth", input_data, mp_raw)
     else:

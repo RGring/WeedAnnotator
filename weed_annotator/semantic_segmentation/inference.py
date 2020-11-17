@@ -50,7 +50,7 @@ def inference(config_file, model_file, input_data, output):
         classes=1,
         activation=config["training"]["activation"],
     )
-    model.load_state_dict(torch.load(f"{model_file}")["model_state_dict"])
+    model.load_state_dict(torch.load(f"{model_file}", map_location=torch.device(DEVICE))["model_state_dict"])
     model.to(DEVICE)
 
     infer_dataset = WeedDataset(

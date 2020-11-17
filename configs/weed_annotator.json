@@ -5,7 +5,7 @@
   "image_composition": {
     "enable": true,
     "config": "configs/image_composition.json",
-    "reuse": "sample_data/synthetic_imgs/10_no_leave_augmentations"
+    "reuse": ["sample_data/synthetic_imgs/10_no_leave_augmentations"]
   },
   "sem_segmentation": {
     "enable_train": true,
