@@ -1,3 +1,4 @@
+import argparse
 import json
 import torch
 from torch.utils.data import DataLoader
@@ -97,11 +98,16 @@ def train(config):
     )
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description='Inference')
+    parser.add_argument('-c', '--config', default='configs/seg_config.json', type=str,
+                        help='The config the model has been trained with.')
+    args = parser.parse_args()
+
     # Setting seed for reproducability
     utils.set_seeds()
 
     # Loading config
-    config = json.load(open("configs/seg_config.json"))
+    config = json.load(open(args.config))
 
     # train
     train(config)
