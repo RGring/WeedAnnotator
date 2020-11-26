@@ -36,7 +36,7 @@ if __name__ == "__main__":
         logger.info("Generating image compositions for training.")
         img_comp_config = json.load(open(f"{args.config_folder}/image_composition.json"))
         compose_images(img_comp_config)
-        train_folder = img_comp_config["folders"]["out_folder"]
+        train_folder = f"{img_comp_config['folders']['out_folder']}/{img_comp_config['folders']['ident']}"
     else:
         train_folder = pipeline_config["image_composition"]["reuse"]
 
