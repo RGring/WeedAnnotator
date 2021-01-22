@@ -24,3 +24,6 @@ class Polygon:
 
     def get_label(self):
         return self.label
+
+    def set_label(self, label):
+        self.label = label

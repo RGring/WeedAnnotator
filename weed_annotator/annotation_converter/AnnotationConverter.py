@@ -2,6 +2,7 @@ import glob
 import cv2
 import json
 import os
+import numpy as np
 import xml.etree.cElementTree as ET
 from weed_annotator.annotation_converter.BoundingBox import BoundingBox
 from weed_annotator.annotation_converter.Polygon import Polygon
@@ -96,6 +97,17 @@ class AnnotationConverter:
             root = AnnotationConverter._add_label_to_cvat(root, labels)
         tree = ET.ElementTree(root)
         tree.write(path_to_annotation_file)
+
+    @staticmethod
+    def get_mask(annotation, label_list, width, height, color=(255, 255, 255)):
+        mask = np.zeros((width, height, 3), dtype=np.uint8)
+        if annotation is not None:
+            polygons = annotation.get_polygons()
+            for pol in polygons:
+                if pol.get_label() not in label_list:
+                    continue
+                cv2.fillPoly(mask, pts=[pol.get_polygon_points_as_array()], color=color)
+        return mask
 
     @staticmethod
     def read_cvat_all(path_to_annotation_file):
