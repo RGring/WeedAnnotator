@@ -11,6 +11,6 @@ class LovaszLoss(smp.utils.base.Loss):
 
     def forward(self, y_pr, y_gt):
         y_pr = self.activation(y_pr)
-        # loss = lovasz_hinge(y_pr, y_gt, per_image=False, ignore=self.ignore_channels) # no activation function here
-        loss = lovasz_softmax(y_pr, y_gt, per_image=False, classes=[1], ignore=self.ignore_channels)
+        loss = lovasz_hinge(y_pr, y_gt, per_image=False, ignore=self.ignore_channels) # no activation function here
+        # loss = lovasz_softmax(y_pr, y_gt, per_image=False, classes=[1], ignore=self.ignore_channels)
         return loss

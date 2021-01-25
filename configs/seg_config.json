@@ -1,27 +1,49 @@
-{ "train_ident": "sample_training",
+{ "identifier": "sample_training",
   "arch": {
-      "args": {
-          "encoder": "resnet18",
-          "encoder_weights": "imagenet"
-      },
-      "type": "PSPNet"
+        "type": "PSPNet",
+        "encoder": "resnet18",
+        "pretrained_weights": "imagenet"
   },
   "data": {
-      "train_data": ["sample_data/synthetic_imgs/10_no_leave_augmentations"],
-      "val_data": ["sample_data/imgs_val"],
-      "weed_label": "rumex_leaf",
-      "aug": {"input_height": 816,
-              "input_width": 616,
-              "blur": true
+      "train_data": "/home/rog/data/data_iphone6/annotated_rumex/train_subset_0.1_default.txt",
+      "val_data": "/home/rog/data/data_iphone6/annotated_rumex/val_subset_0.1_default.txt",
+      "labels_to_consider": ["rumex_leaf"],
+      "aug": {"input_height": 304,
+              "input_width": 304,
+              "mean": [0.3, 0.3, 0.3],
+              "std": [0.2, 0.3, 0.2],
+              "p_flip": 0.5,
+              "p_motion_blur": 0.3,
+              "scale_min": -0.2,
+              "scale_max": 0.2,
+              "rot_deg": 180,
+              "p_color_jitter": 0.0,
+              "jitter_values": [0.2, 0.2, 0.2, 0.2],
+              "p_to_gray": 0.2
               }
   },
   "training": {
+      "optimization": {
+        "lr_encoder": 0.0001,
+        "lr_decoder": 0.001,
+        "decay_epochs": [18, 25],
+        "decay_gamma": 0.2,
+        "optimizer": "adam",
+        "weight_decay": 0.0
+      },
       "batch_size": 8,
-      "epochs": 200,
+      "epochs": 30,
       "lr": 0.001,
-      "activation": "sigmoid",
-      "val": true,
-      "val_every_epoch": 3
+      "activation": "softmax2d",
+      "loss_func": "lovasz",
+      "num_workers": 1,
+      "val_every_epoch": 1
   },
-  "logging_path": "sample_data/train_log/"
+  "logging": {
+    "project_name": "rumex_segmentation",
+    "log_path": "sample_data/train_log",
+    "tool": "wandb",
+    "save_ckp_every": 10,
+    "resume": ""
+  }
 }

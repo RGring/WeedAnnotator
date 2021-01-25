@@ -1,106 +1,235 @@
 import argparse
 import json
-import torch
-from torch.utils.data import DataLoader
-import segmentation_models_pytorch as smp
 import os
-
+import shutil
+import torch
+import wandb
+import segmentation_models_pytorch as smp
+from torch.utils.data import DataLoader
 from weed_annotator.semantic_segmentation.weed_data_set import WeedDataset
-from weed_annotator.semantic_segmentation.losses import LovaszLoss
-from weed_annotator.semantic_segmentation import utils, aug
-from catalyst import dl, metrics
-
+from weed_annotator.semantic_segmentation import optimizer, metrics, utils, aug, losses
+import matplotlib.pyplot as plt
+import numpy as np
+#os.environ['WANDB_MODE'] = 'dryrun'
 DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-class CustomRunner(dl.Runner):
+# ToDo: Possibly extend this function. Depending on pretrained models that should be loaded.
+def load_weights(model, path_to_weights):
+    state_dict = torch.load(path_to_weights)
+    state_dict = state_dict["state_dict"]
+    state_dict_enc = {}
+    for k1, (k2, v) in zip(model.encoder.state_dict().keys(), state_dict.items()):
+        if "backbone" in k2:
+            state_dict_enc[k1] = v
+    state_dict_enc["fc.bias"] = 0
+    state_dict_enc["fc.weight"] = 0
+    msg = model.encoder.load_state_dict(state_dict_enc, strict=False)
 
-    def _handle_batch(self, batch):
-        # model train/valid step
-        x, y = batch
-        y_hat = self.model(x)
 
-        loss = LovaszLoss()(y_hat, y)
-        iou = metrics.iou(y_hat, y, threshold=0.5, activation=None)
-        self.batch_metrics.update(
-            {"loss": loss, "iou": iou}
-        )
+def train_network(config):
+    # Add better logging, maybe wandb?
+    logger, tb_writer, dump_checkpoints = utils.init_logging(config)
 
-        if self.is_train_loader:
-            loss.backward()
-            self.optimizer.step()
-            self.optimizer.zero_grad()
-
-def train(config):
-    log_path = f"{config['logging_path']}/{config['train_ident']}"
-    os.makedirs(log_path, exist_ok=True)
-
-    # Saving config
-    with open(f"{log_path}/config.json", 'w') as f:
-        json.dump(config, f)
-
-    # Extracting relevant config params
-    encoder = config["arch"]["args"]["encoder"]
-    encoder_weights = config["arch"]["args"]["encoder_weights"]
-
-    # ToDo Make possible to train on several folders/annotation files
-    train_data = config["data"]["train_data"]
-    val_data = config["data"]["val_data"]
-
-    # Create model
-    model = smp.PSPNet(
-        encoder_name=encoder,
-        encoder_weights=encoder_weights,
-        classes=1,
-        activation=config["training"]["activation"],
-    )
-
-    preprocessing_fn = smp.encoders.get_preprocessing_fn(encoder, encoder_weights)
-
+    # Data + Augmentations
     train_dataset = WeedDataset(
-        train_data,
-        weed_label=config["data"]["weed_label"],
+        utils.load_img_list(f"{config['data']['train_data']}"),
+        labels_to_consider=config["data"]["labels_to_consider"],
         augmentation=aug.get_training_augmentations(config["data"]["aug"]),
-        preprocessing=aug.get_preprocessing(preprocessing_fn),
     )
 
     val_dataset = WeedDataset(
-        val_data,
-        weed_label=config["data"]["weed_label"],
+        utils.load_img_list(f"{config['data']['val_data']}"),
+        labels_to_consider=config["data"]["labels_to_consider"],
         augmentation=aug.get_validation_augmentations(config["data"]["aug"]),
-        preprocessing=aug.get_preprocessing(preprocessing_fn),
     )
 
-    train_loader = DataLoader(train_dataset, batch_size=config["training"]["batch_size"], shuffle=True, num_workers=1)
-    valid_loader = DataLoader(val_dataset, batch_size=config["training"]["batch_size"], shuffle=False, num_workers=1)
-    loaders = {"train": train_loader, "valid": valid_loader}
+    train_loader = DataLoader(train_dataset, batch_size=config["training"]["batch_size"], shuffle=True, num_workers=config["training"]["num_workers"])
+    valid_loader = DataLoader(val_dataset, batch_size=config["training"]["batch_size"], shuffle=False, num_workers=config["training"]["num_workers"])
 
-    lr  = config["training"]["lr"]
-    trainable_params = [{'params': filter(lambda p: p.requires_grad, model.decoder.parameters())},
-                        {'params': filter(lambda p: p.requires_grad, model.encoder.parameters()),
-                         'lr': lr / 10}]
+    logger.info(f"Building data done with TRAIN: {len(train_dataset)}, VAL: {len(val_dataset)} images loaded.")
 
-    optimizer = torch.optim.Adam(trainable_params, lr=lr, weight_decay=lr*0.1)
-    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, 30, gamma=0.1)
 
-    # model training
-    runner = CustomRunner()
-    runner.train(
-        model=model,
-        optimizer=optimizer,
-        scheduler=scheduler,
-        loaders=loaders,
-        main_metric="iou",
-        # IoU needs to be maximized.
-        minimize_metric=False,
-        logdir=log_path,
-        num_epochs=config["training"]["epochs"],
-        verbose=True,
+    # Model and pretrained weights
+    pretrained_weights = config["arch"]["pretrained_weights"]
+    if pretrained_weights == "imagenet":
+        encoder_weights = pretrained_weights
+    else:
+        encoder_weights = None
+    num_classes = len(config["data"]["labels_to_consider"]) + 1 #Background class
+    model = smp.__dict__[config["arch"]["type"]](
+        encoder_name=config["arch"]["encoder"],
+        encoder_weights=encoder_weights,
+        classes = num_classes,
+        activation=config["training"]["activation"],
     )
+    if encoder_weights == None and pretrained_weights != "":
+        load_weights(model, pretrained_weights)
+    logger.info(f"Building model done with pretrained_weights: {pretrained_weights}")
+
+    # Optimization
+    optim = optimizer.get_optimizer(model, config)
+    scheduler = torch.optim.lr_scheduler.MultiStepLR(
+        optim, config["training"]["optimization"]["decay_epochs"], gamma=config["training"]["optimization"]["decay_gamma"])
+    if tb_writer is None:
+        wandb.watch(model)
+
+    # Loss
+    loss_func = config["training"]["loss_func"]
+    if loss_func == "lovasz":
+        criterion = losses.LovaszLoss()
+    elif loss_func == "dice":
+        criterion = smp.utils.losses.DiceLoss()
+
+
+    # Resume
+    to_restore = {"epoch": 0, "best_iou": 0.0}
+    if config["logging"]["resume"]:
+        utils.restart_from_checkpoint(
+            config["logging"]["resume"],
+            run_variables=to_restore,
+            state_dict=model,
+            optimizer=optim,
+            scheduler=scheduler,
+        )
+    start_epoch = to_restore["epoch"]
+    best_iou = to_restore["best_iou"]
+
+    for epoch in range(start_epoch, config["training"]["epochs"]):
+        logger.info("============ Starting epoch %i ... ============" % epoch)
+
+        # train
+        scores = train(train_loader, model, optim, criterion, epoch, logger, tb_writer)
+
+        # save_checkpoint
+        save_dict = {
+            "epoch": epoch + 1,
+            "state_dict": model.state_dict(),
+            "optimizer": optim.state_dict(),
+            "scheduler": scheduler.state_dict(),
+            "best_iou": best_iou
+        }
+        torch.save(save_dict, os.path.join(dump_checkpoints, "checkpoint-recent.pth.tar"))
+        if epoch % config["logging"]["save_ckp_every"] == 0:
+            shutil.copyfile(
+                os.path.join(dump_checkpoints, "checkpoint-recent.pth.tar"),
+                os.path.join(dump_checkpoints, "ckp-" + str(epoch) + ".pth.tar"),
+            )
+
+        # val
+        if epoch % config["training"]["val_every_epoch"] == 0:
+            val_loss, val_iou = val(valid_loader, model, criterion, (epoch+1)*len(train_loader), logger, tb_writer)
+            if val_iou > best_iou:
+                best_iou = val_iou
+                shutil.copyfile(
+                    os.path.join(dump_checkpoints, "checkpoint-recent.pth.tar"),
+                    os.path.join(dump_checkpoints, "checkpoint-best.pth.tar"),
+                )
+
+        scheduler.step()
+
+    logger.info(f"Training finished with best mean IoU of {best_iou}.")
+
+def train(train_loader, model, optimizer, criterion, epoch, logger, writer):
+    losses = utils.AverageMeter()
+    mean_ious = utils.AverageMeter()
+
+    model.train()
+    for iter_epoch, (inp, target) in enumerate(train_loader):
+        iteration = epoch * len(train_loader) + iter_epoch
+        inp = inp.to(DEVICE)
+        target = target.to(DEVICE)
+        output = model(inp)
+        loss = criterion(output, target)
+
+        # compute the gradients
+        optimizer.zero_grad()
+        loss.backward()
+
+        # step
+        optimizer.step()
+
+        # ToDo: How to handle target images, that do not contain the foreground class??
+        miou = metrics.mIoU_per_batch(output, target, ignore_channels=[0])
+
+        # update stats
+        losses.update(loss.item(), inp.size(0))
+        mean_ious.update(miou.item(), inp.size(0))
+
+
+    if writer is None:
+        wandb.log({"loss/train": losses.avg}, step=iteration)
+        wandb.log({"mIoU/train": mean_ious.avg}, step=iteration)
+    else:
+        writer.add_scalar("loss/train", losses.avg, iteration)
+        writer.add_scalar("mIoU/train", mean_ious.avg, iteration)
+
+    logger.info(f"Train\t"
+                f"Epoch {epoch} [{iter_epoch}/{len(train_loader)}]\t"
+                f"Loss {losses.avg:.3f}\t"
+                f"mIoU {mean_ious.avg:.3f}\t"
+                f"lr_enc {optimizer.param_groups[1]['lr']}, lr_dec {optimizer.param_groups[0]['lr']}")
+    return losses.avg, mean_ious.avg
+
+def val(valid_loader, model, criterion, iteration, logger, writer):
+    losses = utils.AverageMeter()
+    mean_ious = utils.AverageMeter()
+
+    model.eval()
+    log_images = []
+    with torch.no_grad():
+        for i, (inp, target) in enumerate(valid_loader):
+            inp = inp.to(DEVICE)
+            target = target.to(DEVICE)
+            output = model(inp)
+            loss = criterion(output, target)
+            miou = metrics.mIoU_per_batch(output, target, ignore_channels=[0])
+
+            # update stats
+            losses.update(loss.item(), inp.size(0))
+            mean_ious.update(miou.item(), inp.size(0))
+
+            # Logging images
+            index = 1
+            image = inp[index, :, :, :].numpy()
+            image = np.swapaxes(image, 0, 1)
+            image = np.swapaxes(image, 1, 2)
+
+            target = target[index, :, :, :]
+            gt_mask = torch.argmax(target, dim=0)
+
+            output = output[index, :, :, :]
+            pred_mask = torch.argmax(output, dim=0)
+            if writer is None:
+                wandb_image = wandb.Image(image, masks={
+                    "predictions": {
+                        "mask_data": pred_mask.numpy().astype(np.uint8),
+                        "class_labels": valid_loader.dataset.label_dict
+                    },
+                    "ground_truth": {
+                        "mask_data": gt_mask.numpy().astype(np.uint8),
+                        "class_labels": valid_loader.dataset.label_dict
+                    },
+                })
+                log_images.append(wandb_image)
+    if writer is None:
+        wandb.log({"loss/val": losses.avg}, step=iteration)
+        wandb.log({"mIoU/val": mean_ious.avg}, step=iteration)
+        wandb.log({"predictions": log_images}, step=iteration)
+    else:
+        writer.add_scalar("loss/val", losses.avg, iteration)
+        writer.add_scalar("mIoU/val", mean_ious.avg, iteration)
+
+
+
+    logger.info(f"Val\t"
+                f"Loss {losses.avg:.3f}\t"
+                f"mIoU {mean_ious.avg:.3f}\t")
+    return losses.avg, mean_ious.avg
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description='Inference')
+    parser = argparse.ArgumentParser(description='Training')
     parser.add_argument('-c', '--config', default='configs/seg_config.json', type=str,
-                        help='The config the model has been trained with.')
+                        help='Training config, that specifies the training settings.')
     args = parser.parse_args()
 
     # Setting seed for reproducability
@@ -110,4 +239,4 @@ if __name__ == "__main__":
     config = json.load(open(args.config))
 
     # train
-    train(config)
+    train_network(config)
