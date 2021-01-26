@@ -1,4 +1,5 @@
 import argparse
+import cv2
 import json
 import os
 import shutil
@@ -8,9 +9,10 @@ import segmentation_models_pytorch as smp
 from torch.utils.data import DataLoader
 from weed_annotator.semantic_segmentation.weed_data_set import WeedDataset
 from weed_annotator.semantic_segmentation import optimizer, metrics, utils, aug, losses
+from weed_annotator.semantic_segmentation.models.BiSeNet.bisenet_v1 import BiSeNetV1
 import matplotlib.pyplot as plt
 import numpy as np
-#os.environ['WANDB_MODE'] = 'dryrun'
+os.environ['WANDB_MODE'] = 'dryrun'
 DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 # ToDo: Possibly extend this function. Depending on pretrained models that should be loaded.
@@ -56,22 +58,34 @@ def train_network(config):
     else:
         encoder_weights = None
     num_classes = len(config["data"]["labels_to_consider"]) + 1 #Background class
-    model = smp.__dict__[config["arch"]["type"]](
-        encoder_name=config["arch"]["encoder"],
-        encoder_weights=encoder_weights,
-        classes = num_classes,
-        activation=config["training"]["activation"],
-    )
-    if encoder_weights == None and pretrained_weights != "":
-        load_weights(model, pretrained_weights)
+
+    if config["arch"]["type"] == "BiSeNetV1":
+        # ToDo
+        model = BiSeNetV1(num_classes)
+        trainable_params = model.parameters()
+    else:
+        model = smp.__dict__[config["arch"]["type"]](
+            encoder_name=config["arch"]["encoder"],
+            encoder_weights=encoder_weights,
+            classes = num_classes,
+            activation=config["training"]["activation"],
+        )
+        if encoder_weights == None and pretrained_weights != "":
+            load_weights(model, pretrained_weights)
+        trainable_params = [{'params': filter(lambda p: p.requires_grad, model.decoder.parameters())},
+                            {'params': filter(lambda p: p.requires_grad, model.encoder.parameters()),
+                             'lr': config["training"]["optimization"]["lr_encoder"]}]
+
+    model.to(DEVICE)
+    if tb_writer is None:
+        wandb.watch(model)
     logger.info(f"Building model done with pretrained_weights: {pretrained_weights}")
 
     # Optimization
-    optim = optimizer.get_optimizer(model, config)
+    optim = optimizer.get_optimizer(model, trainable_params, config)
     scheduler = torch.optim.lr_scheduler.MultiStepLR(
         optim, config["training"]["optimization"]["decay_epochs"], gamma=config["training"]["optimization"]["decay_gamma"])
-    if tb_writer is None:
-        wandb.watch(model)
+
 
     # Loss
     loss_func = config["training"]["loss_func"]
@@ -102,6 +116,14 @@ def train_network(config):
 
         # save_checkpoint
         save_dict = {
+            "config": {
+                "arch": config["arch"]["type"],
+                "encoder": config["arch"]["encoder"],
+                "activation": config["training"]["activation"],
+                "input_size": [int(config["data"]["aug"]["input_width"]), int(config["data"]["aug"]["input_height"])],
+                "num_classes": num_classes,
+
+            },
             "epoch": epoch + 1,
             "state_dict": model.state_dict(),
             "optimizer": optim.state_dict(),
@@ -116,8 +138,8 @@ def train_network(config):
             )
 
         # val
-        if epoch % config["training"]["val_every_epoch"] == 0:
-            val_loss, val_iou = val(valid_loader, model, criterion, (epoch+1)*len(train_loader), logger, tb_writer)
+        if (epoch + 1) % config["training"]["val_every_epoch"] == 0:
+            val_loss, val_iou = val(valid_loader, model, criterion, (epoch+1)*len(train_loader), logger, tb_writer, config["logging"]["log_images"])
             if val_iou > best_iou:
                 best_iou = val_iou
                 shutil.copyfile(
@@ -170,7 +192,7 @@ def train(train_loader, model, optimizer, criterion, epoch, logger, writer):
                 f"lr_enc {optimizer.param_groups[1]['lr']}, lr_dec {optimizer.param_groups[0]['lr']}")
     return losses.avg, mean_ious.avg
 
-def val(valid_loader, model, criterion, iteration, logger, writer):
+def val(valid_loader, model, criterion, iteration, logger, writer, log_images=False):
     losses = utils.AverageMeter()
     mean_ious = utils.AverageMeter()
 
@@ -189,32 +211,40 @@ def val(valid_loader, model, criterion, iteration, logger, writer):
             mean_ious.update(miou.item(), inp.size(0))
 
             # Logging images
-            index = 1
-            image = inp[index, :, :, :].numpy()
-            image = np.swapaxes(image, 0, 1)
-            image = np.swapaxes(image, 1, 2)
+            if log_images:
+                index = 1
+                img_upload_size = (300, 300)
+                image = inp[index, :, :, :].cpu().numpy()
+                image = np.swapaxes(image, 0, 1)
+                image = np.swapaxes(image, 1, 2)
+                image = cv2.resize(image, img_upload_size)
 
-            target = target[index, :, :, :]
-            gt_mask = torch.argmax(target, dim=0)
+                target = target[index, :, :, :]
+                gt_mask = torch.argmax(target, dim=0)
+                gt_mask = gt_mask.cpu().numpy().astype(np.uint8)
+                gt_mask = cv2.resize(gt_mask, img_upload_size)
 
-            output = output[index, :, :, :]
-            pred_mask = torch.argmax(output, dim=0)
-            if writer is None:
-                wandb_image = wandb.Image(image, masks={
-                    "predictions": {
-                        "mask_data": pred_mask.numpy().astype(np.uint8),
-                        "class_labels": valid_loader.dataset.label_dict
-                    },
-                    "ground_truth": {
-                        "mask_data": gt_mask.numpy().astype(np.uint8),
-                        "class_labels": valid_loader.dataset.label_dict
-                    },
-                })
-                log_images.append(wandb_image)
+                output = output[index, :, :, :]
+                pred_mask = torch.argmax(output, dim=0)
+                pred_mask = pred_mask.cpu().numpy().astype(np.uint8)
+                pred_mask = cv2.resize(pred_mask, img_upload_size)
+                if writer is None:
+                    wandb_image = wandb.Image(image, masks={
+                        "predictions": {
+                            "mask_data": pred_mask,
+                            "class_labels": valid_loader.dataset.label_dict
+                        },
+                        "ground_truth": {
+                            "mask_data": gt_mask,
+                            "class_labels": valid_loader.dataset.label_dict
+                        },
+                    })
+                    log_images.append(wandb_image)
     if writer is None:
         wandb.log({"loss/val": losses.avg}, step=iteration)
         wandb.log({"mIoU/val": mean_ious.avg}, step=iteration)
-        wandb.log({"predictions": log_images}, step=iteration)
+        if log_images:
+            wandb.log({"predictions": log_images}, step=iteration)
     else:
         writer.add_scalar("loss/val", losses.avg, iteration)
         writer.add_scalar("mIoU/val", mean_ious.avg, iteration)

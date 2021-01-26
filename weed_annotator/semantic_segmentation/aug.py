@@ -16,7 +16,7 @@ def get_training_augmentations(aug_config):
     if aug_config["p_to_gray"] > 0:
         train_augments.append(albu.ToGray(p=aug_config["p_to_gray"]))
     train_augments.append(albu.ShiftScaleRotate(scale_limit=[aug_config["scale_min"], aug_config["scale_max"]], rotate_limit=[-aug_config["rot_deg"], aug_config["rot_deg"]], p=1.0))
-    train_augments.append(albu.Resize(aug_config["input_height"], aug_config["input_width"], always_apply=True))
+    train_augments.append(albu.Resize(aug_config["input_width"], aug_config["input_height"], always_apply=True))
     train_augments.append(albu.Normalize(mean=aug_config["mean"], std=aug_config["std"]))
     train_augments.append(ToTensorV2())
     return albu.Compose(train_augments)

@@ -1,11 +1,7 @@
 import torch
 import torch_optimizer as optim
 
-def get_optimizer(model, config):
-    trainable_params = [{'params': filter(lambda p: p.requires_grad, model.decoder.parameters())},
-                        {'params': filter(lambda p: p.requires_grad, model.encoder.parameters()),
-                         'lr': config["training"]["optimization"]["lr_encoder"]}]
-
+def get_optimizer(model, trainable_params, config):
     opt = config["training"]["optimization"]["optimizer"]
     lr_base = config["training"]["optimization"]["lr_decoder"]
     wd = config["training"]["optimization"]["weight_decay"]
