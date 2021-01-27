@@ -9,7 +9,7 @@ import segmentation_models_pytorch as smp
 from torch.utils.data import DataLoader
 from weed_annotator.semantic_segmentation.weed_data_set import WeedDataset
 from weed_annotator.semantic_segmentation import optimizer, metrics, utils, aug, losses
-from weed_annotator.semantic_segmentation.models.BiSeNet.bisenet_v1 import BiSeNetV1
+from weed_annotator.semantic_segmentation.models.xResnet_encoder import xResnetEncoder
 import matplotlib.pyplot as plt
 import numpy as np
 os.environ['WANDB_MODE'] = 'dryrun'
@@ -17,7 +17,7 @@ DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 # ToDo: Possibly extend this function. Depending on pretrained models that should be loaded.
 def load_weights(model, path_to_weights):
-    state_dict = torch.load(path_to_weights)
+    state_dict = torch.load(path_to_weights, map_location=torch.device(DEVICE))
     state_dict = state_dict["state_dict"]
     state_dict_enc = {}
     for k1, (k2, v) in zip(model.encoder.state_dict().keys(), state_dict.items()):
