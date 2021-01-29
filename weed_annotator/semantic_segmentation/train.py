@@ -12,7 +12,7 @@ from weed_annotator.semantic_segmentation import optimizer, metrics, utils, aug,
 from weed_annotator.semantic_segmentation.models.xResnet_encoder import xResnetEncoder
 import matplotlib.pyplot as plt
 import numpy as np
-os.environ['WANDB_MODE'] = 'dryrun'
+#os.environ['WANDB_MODE'] = 'dryrun'
 DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 # ToDo: Possibly extend this function. Depending on pretrained models that should be loaded.
@@ -186,7 +186,7 @@ def train(train_loader, model, optimizer, criterion, epoch, logger, writer):
         writer.add_scalar("mIoU/train", mean_ious.avg, iteration)
 
     logger.info(f"Train\t"
-                f"Epoch {epoch} [{iter_epoch}/{len(train_loader)}]\t"
+                f"Epoch {epoch}\t"
                 f"Loss {losses.avg:.3f}\t"
                 f"mIoU {mean_ious.avg:.3f}\t"
                 f"lr_enc {optimizer.param_groups[1]['lr']}, lr_dec {optimizer.param_groups[0]['lr']}")

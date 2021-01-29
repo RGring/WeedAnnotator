@@ -3,7 +3,7 @@ import torch_optimizer as optim
 
 def get_optimizer(model, trainable_params, config):
     opt = config["training"]["optimization"]["optimizer"]
-    lr_base = config["training"]["optimization"]["lr_decoder"]
+    lr_base = config["training"]["lr"]
     wd = config["training"]["optimization"]["weight_decay"]
     if opt == "adam":
         optimizer = torch.optim.Adam(
