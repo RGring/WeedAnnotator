@@ -6,7 +6,6 @@ import os
 import torch
 from torch.utils.data import Dataset
 import matplotlib.pyplot as plt
-
 from weed_annotator.annotation_converter.AnnotationConverter import AnnotationConverter
 
 
@@ -20,21 +19,22 @@ class WeedDataset(Dataset):
         augmentation (albumentations.Compose): data transfromation pipeline (e.g. flip, scale, etc.)
     """
 
-    def __init__(self, file_ids, labels_to_consider, num_img_split=0, augmentation=None):
-        self.num_subimg_splits = num_img_split
-        self.image_list = self._get_img_list(file_ids)
-
-        # convert str names to class values on masks
+    def __init__(self, file_ids, labels_to_consider, num_img_split=0, augmentation=None, skip_background=False):
+        # Label Definition
         self._labels_to_consider = ["background"]
         self._labels_to_consider.extend(labels_to_consider)
         self.label_dict = {}
         for i, label in enumerate(self._labels_to_consider):
             self.label_dict[i] = label
 
+        # Load img list
+        self.num_subimg_splits = num_img_split
+        self.image_list = self._get_img_list(file_ids, skip_background)
+
         self.augmentation = augmentation
         self._last_img_props = None
 
-    def _get_img_list(self, file_ids):
+    def _get_img_list(self, file_ids, skip_background):
         files = []
         file_ids.sort()
         for id in file_ids:
@@ -60,12 +60,15 @@ class WeedDataset(Dataset):
 
     def __getitem__(self, index):
         img_props = self.image_list[index]
+
+        # Loading image
         image_path = img_props["img_id"]
         image = cv2.imread(image_path, cv2.IMREAD_UNCHANGED)
         img_props["img_width"] = image.shape[0]
         img_props["img_height"] = image.shape[1]
         img_props["rotate"] = False
 
+        # Loading mask
         mask = self._create_mask(image_path, image)
 
         # Make sure we always have the same aspect ratio.
@@ -73,17 +76,19 @@ class WeedDataset(Dataset):
             img_props["rotate"] = True
             image = cv2.rotate(image, cv2.ROTATE_90_CLOCKWISE)
             mask = cv2.rotate(mask, cv2.ROTATE_90_CLOCKWISE)
-        # plt.imshow(cv2.addWeighted(mask.astype(np.uint8)*255, 1, image, 0.8, 0))
-        # plt.show()
+
+        # Retrieve subsplits
         if self.num_subimg_splits > 0:
             image = self._get_sub_img(image, img_props["split_x"], img_props["split_y"])
             mask = self._get_sub_img(mask, img_props["split_x"], img_props["split_y"])
-        # apply augmentations
+
+        # Augmentations
         if self.augmentation:
             sample = self.augmentation(image=image, mask=mask)
             image, mask = sample['image'], sample['mask']
         mask = torch.transpose(mask, 1, 2)
         mask = torch.transpose(mask, 0, 1)
+        # self._plot_overlay(image, mask, True)
         self._last_img_props = img_props
         return image, mask
 
@@ -118,3 +123,25 @@ class WeedDataset(Dataset):
         h_subimg = math.floor(h_img / self.num_subimg_splits)
         return img[split_x * w_subimg:split_x * w_subimg + w_subimg, split_y * h_subimg:split_y * h_subimg + h_subimg,
                :]
+
+    def _plot_overlay(self, image, mask, augmented):
+        if augmented:
+            image_temp = image.cpu().numpy()
+            image_temp = np.swapaxes(image_temp, 0, 1)
+            image_temp = np.swapaxes(image_temp, 1, 2)
+            mask_temp = np.zeros((image_temp.shape[0], image_temp.shape[1], 3))
+            mask_temp[:, :, 0] = mask[1, :, :].numpy()
+            mask_temp[:, :, 1] = mask[1, :, :].numpy()
+            mask_temp[:, :, 2] = mask[1, :, :].numpy()
+        else:
+            image_temp = image
+            mask_temp = np.zeros((mask.shape[0], mask.shape[1], 3))
+            mask_temp[:, :, 0] = mask[:, :, 1]
+            mask_temp[:, :, 1] = mask[:, :, 1]
+            mask_temp[:, :, 2] = mask[:, :, 1]
+        mask_temp = mask_temp.astype(np.uint8) * 255
+        plt.imshow(cv2.addWeighted(mask_temp, 1, image_temp.astype(np.uint8), 0.8, 0))
+        plt.show()
+        plt.imshow(image_temp.astype(np.uint8))
+        plt.show()
+

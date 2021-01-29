@@ -7,7 +7,8 @@ import torch
 import wandb
 import segmentation_models_pytorch as smp
 from torch.utils.data import DataLoader
-from weed_annotator.semantic_segmentation.weed_data_set import WeedDataset
+from weed_annotator.semantic_segmentation.dataset.weed_data_set import WeedDataset
+from weed_annotator.semantic_segmentation.dataset.sugar_beet_dataset import SugarBeetDataset
 from weed_annotator.semantic_segmentation import optimizer, metrics, utils, aug, losses
 from weed_annotator.semantic_segmentation.models.xResnet_encoder import xResnetEncoder
 import matplotlib.pyplot as plt
@@ -32,14 +33,19 @@ def train_network(config):
     # Add better logging, maybe wandb?
     logger, tb_writer, dump_checkpoints = utils.init_logging(config)
 
+    dataset_class = WeedDataset
+    if "sugar_beet" in config['data']['train_data']:
+        dataset_class = SugarBeetDataset
+
+
     # Data + Augmentations
-    train_dataset = WeedDataset(
+    train_dataset = dataset_class(
         utils.load_img_list(f"{config['data']['train_data']}"),
         labels_to_consider=config["data"]["labels_to_consider"],
         augmentation=aug.get_training_augmentations(config["data"]["aug"]),
     )
 
-    val_dataset = WeedDataset(
+    val_dataset = dataset_class(
         utils.load_img_list(f"{config['data']['val_data']}"),
         labels_to_consider=config["data"]["labels_to_consider"],
         augmentation=aug.get_validation_augmentations(config["data"]["aug"]),
