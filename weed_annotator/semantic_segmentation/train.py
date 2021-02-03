@@ -43,12 +43,14 @@ def train_network(config):
         utils.load_img_list(f"{config['data']['train_data']}"),
         labels_to_consider=config["data"]["labels_to_consider"],
         augmentation=aug.get_training_augmentations(config["data"]["aug"]),
+        skip_background=config["data"]["skip_background"]
     )
 
     val_dataset = dataset_class(
         utils.load_img_list(f"{config['data']['val_data']}"),
         labels_to_consider=config["data"]["labels_to_consider"],
         augmentation=aug.get_validation_augmentations(config["data"]["aug"]),
+        skip_background=config["data"]["skip_background"]
     )
 
     train_loader = DataLoader(train_dataset, batch_size=config["training"]["batch_size"], shuffle=True, num_workers=config["training"]["num_workers"])
@@ -76,12 +78,17 @@ def train_network(config):
             classes = num_classes,
             activation=config["training"]["activation"],
         )
+
         if encoder_weights == None and pretrained_weights != "":
             load_weights(model, pretrained_weights)
         trainable_params = [{'params': filter(lambda p: p.requires_grad, model.decoder.parameters())},
+                            {'params': filter(lambda p: p.requires_grad, model.segmentation_head.parameters())},
                             {'params': filter(lambda p: p.requires_grad, model.encoder.parameters()),
                              'lr': config["training"]["optimization"]["lr_encoder"]}]
-
+        if config["training"]["optimization"]["lr_encoder"] == 0.0:
+            logger.info("Freezing encoder parameters.")
+            for param in model.encoder.parameters():
+                param.requires_grad = False
     model.to(DEVICE)
     if tb_writer is None:
         wandb.watch(model)
@@ -128,7 +135,6 @@ def train_network(config):
                 "activation": config["training"]["activation"],
                 "input_size": [int(config["data"]["aug"]["input_width"]), int(config["data"]["aug"]["input_height"])],
                 "num_classes": num_classes,
-
             },
             "epoch": epoch + 1,
             "state_dict": model.state_dict(),
@@ -195,7 +201,7 @@ def train(train_loader, model, optimizer, criterion, epoch, logger, writer):
                 f"Epoch {epoch}\t"
                 f"Loss {losses.avg:.3f}\t"
                 f"mIoU {mean_ious.avg:.3f}\t"
-                f"lr_enc {optimizer.param_groups[1]['lr']}, lr_dec {optimizer.param_groups[0]['lr']}")
+                f"lr_enc {optimizer.param_groups[2]['lr']}, lr_dec {optimizer.param_groups[0]['lr']}")
     return losses.avg, mean_ious.avg
 
 def val(valid_loader, model, criterion, iteration, logger, writer, log_images=False):
@@ -254,8 +260,6 @@ def val(valid_loader, model, criterion, iteration, logger, writer, log_images=Fa
     else:
         writer.add_scalar("loss/val", losses.avg, iteration)
         writer.add_scalar("mIoU/val", mean_ious.avg, iteration)
-
-
 
     logger.info(f"Val\t"
                 f"Loss {losses.avg:.3f}\t"
