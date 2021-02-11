@@ -1,6 +1,6 @@
 { "identifier": "sample_training",
   "arch": {
-        "type": "PSPNet",
+        "type": "Unet",
         "encoder": "resnet18",
         "pretrained_weights": "imagenet"
   },
@@ -8,8 +8,9 @@
       "train_data": "/home/rog/data/data_iphone6/annotated_rumex/train_subset_0.1_default.txt",
       "val_data": "/home/rog/data/data_iphone6/annotated_rumex/val_subset_0.1_default.txt",
       "labels_to_consider": ["rumex_leaf"],
-      "aug": {"input_height": 304,
-              "input_width": 304,
+      "skip_background": true,
+      "aug": {"input_height": 256,
+              "input_width": 256,
               "mean": [0.3, 0.3, 0.3],
               "std": [0.2, 0.3, 0.2],
               "p_flip": 0.5,
@@ -37,13 +38,18 @@
       "activation": "softmax2d",
       "loss_func": "lovasz",
       "num_workers": 1,
-      "val_every_epoch": 1
+      "val_every_epoch": 1,
+      "use_fp16": false
   },
   "logging": {
     "project_name": "rumex_segmentation",
     "log_path": "sample_data/train_log",
     "tool": "wandb",
     "save_ckp_every": 10,
-    "resume": ""
+    "resume": "",
+    "log_images": false
+  },
+  "hyper_param_optim": {
+    "enabled": false
   }
 }

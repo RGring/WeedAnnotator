@@ -41,9 +41,7 @@ def init_logging(config):
 
     # tensorboar logging
     writer = None
-    if config["logging"]["tool"] == "wandb":
-        wandb.init(project=config["logging"]["project_name"], name=config["identifier"], config=config, dir=log_path)
-    else:
+    if config["logging"]["tool"] == "tb":
         tb_log_path = f"{log_path}/tb"
         os.makedirs(tb_log_path, exist_ok=True)
         writer = SummaryWriter(log_dir=tb_log_path)
