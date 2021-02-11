@@ -125,23 +125,29 @@ class WeedDataset(Dataset):
                :]
 
     def _plot_overlay(self, image, mask, augmented):
+        COLORS = [
+            (0, 0, 0),
+            (100, 0, 0),
+            (0, 100, 0),
+            (0, 0, 100),
+            (100, 50, 0),
+            (0, 50, 100),
+            (50, 50, 50)
+        ]
         if augmented:
-            image_temp = image.cpu().numpy()
-            image_temp = np.swapaxes(image_temp, 0, 1)
-            image_temp = np.swapaxes(image_temp, 1, 2)
-            mask_temp = np.zeros((image_temp.shape[0], image_temp.shape[1], 3))
-            mask_temp[:, :, 0] = mask[1, :, :].numpy()
-            mask_temp[:, :, 1] = mask[1, :, :].numpy()
-            mask_temp[:, :, 2] = mask[1, :, :].numpy()
-        else:
-            image_temp = image
-            mask_temp = np.zeros((mask.shape[0], mask.shape[1], 3))
-            mask_temp[:, :, 0] = mask[:, :, 1]
-            mask_temp[:, :, 1] = mask[:, :, 1]
-            mask_temp[:, :, 2] = mask[:, :, 1]
-        mask_temp = mask_temp.astype(np.uint8) * 255
-        plt.imshow(cv2.addWeighted(mask_temp, 1, image_temp.astype(np.uint8), 0.8, 0))
+            image = image.numpy()
+            image = np.swapaxes(image, 0, 1)
+            image = np.swapaxes(image, 1, 2)
+            mask = mask.numpy()
+            mask = np.swapaxes(mask, 0, 1)
+            mask = np.swapaxes(mask, 1, 2)
+        num_classes = mask.shape[2]
+        color_mask = np.zeros((mask.shape[0], mask.shape[1], 3), dtype=np.uint8)
+
+        for i in range(num_classes):
+            color_mask[np.where(mask[:, :, i] == 1)] = COLORS[i]
+        plt.imshow(image)
         plt.show()
-        plt.imshow(image_temp.astype(np.uint8))
+        plt.imshow(cv2.addWeighted(color_mask, 1, image.astype(np.uint8), 0.8, 0))
         plt.show()
 
