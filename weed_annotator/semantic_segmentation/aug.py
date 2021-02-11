@@ -24,7 +24,7 @@ def get_training_augmentations(aug_config):
 
 def get_validation_augmentations(aug_config):
     val_augments = []
-    val_augments.append(albu.Resize(aug_config["input_height"], aug_config["input_width"], always_apply=True))
+    val_augments.append(albu.Resize(aug_config["input_width"], aug_config["input_height"], always_apply=True))
     val_augments.append(albu.Normalize(mean=aug_config["mean"], std=aug_config["std"]))
     val_augments.append(ToTensorV2())
     return albu.Compose(val_augments)

@@ -24,11 +24,9 @@ class SugarBeetDataset(WeedDataset):
     def __init__(self, file_ids, labels_to_consider, num_img_split=0, augmentation=None, skip_background=False):
         # Label Definition
         self._labelMap = {'soil': {'id': [0, 1, 97]},
-                    'crop': {'id': [10000, 10001, 10002]},
-                    'weed': {'id': [2]},
-                    'dycot': {
-                        'id': [20000, 20001, 20002, 20003, 20004, 20005, 20006, 20007, 20008, 20009, 20010, 20011]},
-                    'grass': {'id': [20100, 20101, 20102, 20103, 20104, 20105]}}
+                          'crop': {'id': [10000, 10001, 10002]},
+                          'weed': {'id': [2, 20000, 20001, 20002, 20003, 20004, 20005, 20006, 20007, 20008, 20009, 20010, 20011, 20100, 20101, 20102, 20103, 20104, 20105]}
+                          }
 
         self._labels_to_consider = ["background"]
         for label in labels_to_consider:
@@ -50,13 +48,13 @@ class SugarBeetDataset(WeedDataset):
         files = []
         file_ids.sort()
         for id in file_ids:
+            base_path = os.path.dirname(id).replace("/rgb", "")
+            img_id = os.path.basename(id)
+            mask_file = f"{base_path}/iMapCleaned/{img_id}"
+            if not os.path.exists(mask_file):
+                continue
             if skip_background:
-                base_path = os.path.dirname(id).replace("/rgb", "")
-                img_id = os.path.basename(id)
-                mask_file = f"{base_path}/iMapCleaned/{img_id}"
-                if not os.path.exists(mask_file):
-                    continue
-                iMap = _load_iMap(mask_file)
+                iMap = self._load_iMap(mask_file)
                 sum = np.zeros(iMap.shape)
                 background_only = True
                 ones = np.ones(iMap.shape)
@@ -73,6 +71,7 @@ class SugarBeetDataset(WeedDataset):
                         break
                 if background_only:
                     continue
+            id = f"{base_path}/rgb/{img_id}"
             if self.num_subimg_splits > 0:
                 for i in range(self.num_subimg_splits):
                     for j in range(self.num_subimg_splits):
@@ -103,6 +102,5 @@ class SugarBeetDataset(WeedDataset):
 
     def _load_iMap(self, path):
         iMap = cv2.imread(path, cv2.IMREAD_ANYDEPTH)
-        iMap = np.expand_dims(iMap, axis=-1)
-        return iMap[:, :, 0]
+        return iMap
 
