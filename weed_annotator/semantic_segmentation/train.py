@@ -111,6 +111,7 @@ def train_network(config):
                             {'params': filter(lambda p: p.requires_grad, model.segmentation_head.parameters())},
                             {'params': filter(lambda p: p.requires_grad, model.encoder.parameters()),
                              'lr': config["training"]["lr"] / 10}]
+
         if config["training"]["optimization"]["lr_encoder"] == 0.0:
             logger.info("Freezing encoder parameters.")
             for param in model.encoder.parameters():
