@@ -54,24 +54,10 @@ class SugarBeetDataset(WeedDataset):
             if not os.path.exists(mask_file):
                 continue
             if skip_background:
-                iMap = self._load_iMap(mask_file)
-                sum = np.zeros(iMap.shape)
-                background_only = True
-                ones = np.ones(iMap.shape)
-                zeros = np.zeros(iMap.shape)
-                for i, label in enumerate(self._labels_to_consider[1:]):
-                    for sub_label in self._labelMap[label]['id']:
-                        temp =  np.where(np.equal(iMap, sub_label),
-                                               ones,
-                                               zeros)
-                        if np.sum(temp) > 0:
-                            background_only = False
-                            break
-                    if not background_only:
-                        break
-                if background_only:
+                image = cv2.imread(id)
+                mask = self._create_mask(id, image)
+                if np.sum(mask[:, :, 1:]) == 0:
                     continue
-            id = f"{base_path}/rgb/{img_id}"
             if self.num_subimg_splits > 0:
                 for i in range(self.num_subimg_splits):
                     for j in range(self.num_subimg_splits):
