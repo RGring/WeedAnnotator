@@ -155,7 +155,7 @@ def train_network(config):
         logger.info("============ Starting epoch %i ... ============" % epoch)
 
         # train
-        scores = train(train_loader, model, optim, criterion, epoch, logger, tb_writer, config["training"]["use_fp16"])
+        scores = train(train_loader, model, optim, criterion, epoch, logger, tb_writer, config)
 
         # save_checkpoint
         save_dict = {
@@ -182,7 +182,7 @@ def train_network(config):
         # val
         if (epoch + 1) % config["training"]["val_every_epoch"] == 0:
             val_loss, val_iou = val(valid_loader, model, criterion, (epoch + 1) * len(train_loader), logger, tb_writer,
-                                    config["logging"]["log_images"])
+                                    config)
             if val_iou > best_iou:
                 best_iou = val_iou
                 shutil.copyfile(
@@ -194,9 +194,15 @@ def train_network(config):
     logger.info(f"Training finished with best mean IoU of {best_iou}.")
 
 
-def train(train_loader, model, optimizer, criterion, epoch, logger, writer, use_fp16):
+def train(train_loader, model, optimizer, criterion, epoch, logger, writer, config):
     losses = utils.AverageMeter()
-    mean_ious = utils.AverageMeter()
+
+    if config["training"]["metric"] == "iou_per_batch":
+        mean_ious = utils.AverageMeter()
+    elif config["training"]["metric"] == "iou_per_ds":
+        class_labels = train_loader.dataset.label_dict.values()
+        inter_per_class = np.zeros(len(class_labels))
+        union_per_class = np.zeros(len(class_labels))
 
     model.train()
     for iter_epoch, (inp, target) in enumerate(train_loader):
@@ -208,7 +214,7 @@ def train(train_loader, model, optimizer, criterion, epoch, logger, writer, use_
 
         # compute the gradients
         optimizer.zero_grad()
-        if use_fp16:
+        if config["training"]["use_fp16"]:
             with apex.amp.scale_loss(loss, optimizer) as scaled_loss:
                 scaled_loss.backward()
         else:
@@ -217,31 +223,54 @@ def train(train_loader, model, optimizer, criterion, epoch, logger, writer, use_
         # step
         optimizer.step()
 
-        # ToDo: How to handle target images, that do not contain the foreground class??
-        miou = metrics.mIoU_per_batch(output, target.float(), ignore_channels=[0])
-
         # update stats
+        if config["training"]["metric"] == "iou_per_batch":
+            miou = metrics.mIoU_per_batch(output.data, target.float().data)
+            mean_ious.update(miou.item(), inp.size(0))
+        elif config["training"]["metric"] == "iou_per_ds":
+            inter_per_class_now, union_per_class_now = metrics.inter_union_per_class(output.data, target.float().data)
+            inter_per_class += inter_per_class_now
+            union_per_class += union_per_class_now
         losses.update(loss.item(), inp.size(0))
-        mean_ious.update(miou.item(), inp.size(0))
+
+    # Final mean IoU of epoch
+    if config["training"]["metric"] == "iou_per_batch":
+        mean_iou = mean_ious.avg
+    elif config["training"]["metric"] == "iou_per_ds":
+        eps = 1e-7
+        inter_per_class = np.add(inter_per_class, eps)
+        union_per_class = np.add(union_per_class, eps)
+        iou_per_class = inter_per_class / union_per_class
+        mean_iou = np.mean(iou_per_class)
 
     if writer is None:
         wandb.log({"loss/train": losses.avg}, step=iteration)
-        wandb.log({"mIoU/train": mean_ious.avg}, step=iteration)
+        wandb.log({"mIoU/train": mean_iou}, step=iteration)
     else:
         writer.add_scalar("loss/train", losses.avg, iteration)
-        writer.add_scalar("mIoU/train", mean_ious.avg, iteration)
+        writer.add_scalar("mIoU/train", mean_iou, iteration)
 
     logger.info(f"Train\t"
                 f"Epoch {epoch}\t"
                 f"Loss {losses.avg:.3f}\t"
-                f"mIoU {mean_ious.avg:.3f}\t"
+                f"mIoU {mean_iou:.3f}\t"
                 f"lr_enc {optimizer.param_groups[2]['lr']}, lr_dec {optimizer.param_groups[0]['lr']}")
-    return losses.avg, mean_ious.avg
+    if config["training"]["metric"] == "iou_per_ds":
+        str = ""
+        for class_label, iou in zip(class_labels, iou_per_class):
+            str += f"{class_label}: {iou:.3f}, \t"
+        logger.info(str)
+    return losses.avg, mean_iou
 
 
-def val(valid_loader, model, criterion, iteration, logger, writer, log_images=False):
+def val(valid_loader, model, criterion, iteration, logger, writer, config):
     losses = utils.AverageMeter()
-    mean_ious = utils.AverageMeter()
+    if config["training"]["metric"] == "iou_per_batch":
+        mean_ious = utils.AverageMeter()
+    elif config["training"]["metric"] == "iou_per_ds":
+        class_labels = valid_loader.dataset.label_dict.values()
+        inter_per_class = np.zeros(len(class_labels))
+        union_per_class = np.zeros(len(class_labels))
 
     model.eval()
     log_images = []
@@ -251,14 +280,19 @@ def val(valid_loader, model, criterion, iteration, logger, writer, log_images=Fa
             target = target.to(DEVICE)
             output = model(inp)
             loss = criterion(output, target)
-            miou = metrics.mIoU_per_batch(output, target.float(), ignore_channels=[0])
+            if config["training"]["metric"] == "iou_per_batch":
+                miou = metrics.mIoU_per_batch(output, target.float())
+                mean_ious.update(miou.item(), inp.size(0))
+            elif config["training"]["metric"] == "iou_per_ds":
+                inter_per_class_now, union_per_class_now = metrics.inter_union_per_class(output, target.float())
+                inter_per_class += inter_per_class_now
+                union_per_class += union_per_class_now
 
             # update stats
             losses.update(loss.item(), inp.size(0))
-            mean_ious.update(miou.item(), inp.size(0))
 
             # Logging images
-            if log_images:
+            if config["logging"]["log_images"]:
                 index = 1
                 img_upload_size = (300, 300)
                 image = inp[index, :, :, :].cpu().numpy()
@@ -287,19 +321,34 @@ def val(valid_loader, model, criterion, iteration, logger, writer, log_images=Fa
                         },
                     })
                     log_images.append(wandb_image)
+    if config["training"]["metric"] == "iou_per_batch":
+        mean_iou = mean_ious.avg
+    elif config["training"]["metric"] == "iou_per_ds":
+        eps = 1e-7
+        inter_per_class = np.add(inter_per_class, eps)
+        union_per_class = np.add(union_per_class, eps)
+        iou_per_class = inter_per_class / union_per_class
+        mean_iou = np.mean(iou_per_class)
+
     if writer is None:
         wandb.log({"loss/val": losses.avg}, step=iteration)
-        wandb.log({"mIoU/val": mean_ious.avg}, step=iteration)
+        wandb.log({"mIoU/val": mean_iou}, step=iteration)
         if log_images:
             wandb.log({"predictions": log_images}, step=iteration)
     else:
         writer.add_scalar("loss/val", losses.avg, iteration)
-        writer.add_scalar("mIoU/val", mean_ious.avg, iteration)
+        writer.add_scalar("mIoU/val", mean_iou, iteration)
 
     logger.info(f"Val\t"
                 f"Loss {losses.avg:.3f}\t"
-                f"mIoU {mean_ious.avg:.3f}\t")
-    return losses.avg, mean_ious.avg
+                f"mIoU {mean_iou:.3f}\t")
+
+    if config["training"]["metric"] == "iou_per_ds":
+        str = ""
+        for class_label, iou in zip(class_labels, iou_per_class):
+            str += f"{class_label}: {iou:.3f}, \t"
+        logger.info(str)
+    return losses.avg, mean_iou
 
 
 def update_config_from_sweep_config(config, sweep_config):
@@ -337,7 +386,7 @@ def get_sweep_id(config):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Training')
-    parser.add_argument('-c', '--config', default='configs/seg_config.json', type=str,
+    parser.add_argument('-c', '--config', default='configs/seg_config_aerial_farmland.json', type=str,
                         help='Training config, that specifies the training settings.')
     args = parser.parse_args()
 

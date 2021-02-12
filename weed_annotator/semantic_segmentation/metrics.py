@@ -1,47 +1,53 @@
 import torch
 import numpy as np
 # Code snippets taken from: https://github.com/qubvel/segmentation_models.pytorch/blob/master/segmentation_models_pytorch/utils/functional.py
-def intersection(pr, gt):
-    inter = torch.sum(gt * pr)
-    return inter.item()
+def _intersection(pr, gt):
+    inter = torch.sum(gt * pr, dim=[0, 2, 3])
+    return inter
 
-def union(pr, gt, intersect=None, eps=1e-7):
-    if not intersection:
-        intersect = intersection(pr, gt)
-    uni = torch.sum(gt) + torch.sum(pr) - intersect + eps
-    return uni.item()
+def _union(pr, gt, intersect=None):
+    if intersect is not None:
+        intersect = _intersection(pr, gt)
+    uni = torch.sum(gt, dim=[0, 2, 3]) + torch.sum(pr, dim=[0, 2, 3]) - intersect
+    return uni
 
-def mIoU_per_batch(pr, gt, ignore_channels=None):
+def arg_max(pr):
+    pr_argmax = torch.argmax(pr, dim=1)
+    for i in range(pr.size(1)):
+        pr[:, i, :, :] = (pr_argmax == i).type(torch.uint8)
+    return pr
+
+def inter_union_per_class(pr, gt):
+    pr = arg_max(pr)
+    inter_per_class = []
+    union_per_class = []
+    inter_per_class = _intersection(pr, gt)
+    union_per_class = _union(pr, gt, inter_per_class)
+    return inter_per_class.numpy(), union_per_class.numpy()
+
+def mIoU_per_batch(pr, gt, ignore_channels=None, eps=1e-7):
     pr_argmax = torch.argmax(pr, dim=1)
     for i in range(pr.size(1)):
         pr[:, i, :, :] = (pr_argmax == i).type(torch.uint8)
     pr, gt = _take_channels(pr, gt, ignore_channels=ignore_channels)
     iou_list = []
-    for i in range(pr.size(1)):
-        inter_now = intersection(pr[:, i, :, :], gt[:, i, :, :])
-        union_now = union(pr[:, i, :, :], gt[:, i, :, :], inter_now)
-        iou = inter_now/union_now
-        if inter_now == 0 and union_now < 1:
-            iou = 1.0
-        iou_list.append(iou)
-    return np.mean(iou_list)
+    inter_per_class = _intersection(pr, gt)
+    union_per_class = _union(pr, gt, inter_per_class)
+    iou_per_class = (inter_per_class + eps)/(union_per_class + eps)
+    return torch.mean(iou_per_class)
 
-def mIoU_per_image(pr, gt, ignore_channels=None):
+def mIoU_per_image(pr, gt, ignore_channels=None, eps=1e-7):
     pr_argmax = torch.argmax(pr, dim=1)
     for i in range(pr.size(1)):
         pr[:, i, :, :] = (pr_argmax == i).type(torch.uint8)
     pr, gt = _take_channels(pr, gt, ignore_channels=ignore_channels)
-    iou_list = []
+    miou_list = []
     for j in range(batch_size):
         iou_list_temp = []
-        for i in range(pr.size(1)):
-            inter_now = intersection(pr[j, i, :, :], gt[j, i, :, :])
-            union_now = union(pr[j, i, :, :], gt[j, i, :, :], inter_now)
-            iou = inter_now / union_now
-            if inter_now == 0 and union_now < 1:
-                iou = 1.0
-            iou_list_temp.append(iou)
-        iou_list.append(np.mean(iou_list_temp))
+        inter_per_class = _intersection(pr[j, :, :, :], gt[j, :, :, :])
+        union_per_class = _union(pr[j, :, :, :], gt[j, :, :, :], inter_per_class)
+        iou_per_class = (inter_per_class + eps) / (union_per_class + eps)
+        miou_list.append(torch.mean(iou_per_class))
     return np.mean(iou_list)
 
 
