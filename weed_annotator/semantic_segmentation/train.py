@@ -1,6 +1,7 @@
 import argparse
 import cv2
 import json
+import math
 import os
 import shutil
 import torch
@@ -123,9 +124,27 @@ def train_network(config):
 
     # Optimization
     optim = optimizer.get_optimizer(model, trainable_params, config)
-    # scheduler = torch.optim.lr_scheduler.MultiStepLR(
-    #     optim, config["training"]["optimization"]["decay_epochs"], gamma=config["training"]["optimization"]["decay_gamma"])
+    warmup_lr_schedule = np.linspace(config["training"]["optimization"]["start_warmup"],
+                               config["training"]["optimization"]["lr"],
+                               len(train_loader) * config["training"]["optimization"]["warmup_epochs"])
+    iters = np.arange(len(train_loader) * (config["training"]["epochs"] - config["training"]["optimization"]["warmup_epochs"]))
+    if config["training"]["optimization"]["lr_schedule_mode"] == "cos":
+        cosine_lr_schedule = np.array([config["training"]["optimization"]["final_lr"] +
+                                       0.5 * (config["training"]["optimization"]["lr"] -
+                                       config["training"]["optimization"]["final_lr"]) * (1 + math.cos(math.pi * t / (len(train_loader) * (config["training"]["epochs"] -
+                                       config["training"]["optimization"]["warmup_epochs"]))))
+                                       for t in iters])
+    elif config["training"]["optimization"]["lr_schedule_mode"] == "cos_cycle":
+        cosine_lr_schedule = np.array([config["training"]["optimization"]["lr"] - t/((len(train_loader) * (config["training"]["epochs"] -
+                                       config["training"]["optimization"]["warmup_epochs"]))) * (config["training"]["optimization"]["lr"] - config["training"]["optimization"]["final_lr"]) -
+                                       t/((len(train_loader) * (config["training"]["epochs"] -
+                                       config["training"]["optimization"]["warmup_epochs"]))) * (config["training"]["optimization"]["lr"] -
+                                       config["training"]["optimization"]["final_lr"] - t/((len(train_loader) * (config["training"]["epochs"] -
+                                       config["training"]["optimization"]["warmup_epochs"]))) * (config["training"]["optimization"]["lr"] - config["training"]["optimization"]["final_lr"])) * (1 + math.sin(math.pi * t / (len(train_loader) * (int(config["training"]["epochs"]/5) -
+                                       config["training"]["optimization"]["warmup_epochs"]))))
+                                       for t in iters])
 
+    lr_scheduler = np.concatenate((warmup_lr_schedule, cosine_lr_schedule))
     if config["training"]["use_fp16"]:
         model, optim = apex.amp.initialize(model, optim, opt_level="O1")
 
@@ -155,7 +174,7 @@ def train_network(config):
         logger.info("============ Starting epoch %i ... ============" % epoch)
 
         # train
-        scores = train(train_loader, model, optim, criterion, epoch, logger, tb_writer, config)
+        scores = train(train_loader, model, optim, criterion, epoch, lr_scheduler, logger, tb_writer, config)
 
         # save_checkpoint
         save_dict = {
@@ -194,7 +213,7 @@ def train_network(config):
     logger.info(f"Training finished with best mean IoU of {best_iou}.")
 
 
-def train(train_loader, model, optimizer, criterion, epoch, logger, writer, config):
+def train(train_loader, model, optimizer, criterion, epoch, lr_scheduler, logger, writer, config):
     losses = utils.AverageMeter()
 
     if config["training"]["metric"] == "iou_per_batch":
@@ -207,6 +226,10 @@ def train(train_loader, model, optimizer, criterion, epoch, logger, writer, conf
     model.train()
     for iter_epoch, (inp, target) in enumerate(train_loader):
         iteration = epoch * len(train_loader) + iter_epoch
+        for i, param_group in enumerate(optimizer.param_groups):
+            param_group["lr"] = lr_scheduler[iteration]
+        optimizer.param_groups[2]["lr"] /= 10
+
         inp = inp.to(DEVICE)
         target = target.to(DEVICE)
         output = model(inp)
@@ -254,7 +277,7 @@ def train(train_loader, model, optimizer, criterion, epoch, logger, writer, conf
                 f"Epoch {epoch}\t"
                 f"Loss {losses.avg:.3f}\t"
                 f"mIoU {mean_iou:.3f}\t"
-                f"lr_enc {optimizer.param_groups[2]['lr']}, lr_dec {optimizer.param_groups[0]['lr']}")
+                f"lr_enc {optimizer.param_groups[2]['lr']:.5f}, lr_dec {optimizer.param_groups[0]['lr']:.5f}")
     if config["training"]["metric"] == "iou_per_ds":
         str = ""
         for class_label, iou in zip(class_labels, iou_per_class):
