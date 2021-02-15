@@ -9,13 +9,8 @@
       "val_data": "/home/rog/data/data_iphone6/annotated_rumex/val_subset_0.1_default.txt",
       "labels_to_consider": ["rumex_leaf"],
       "skip_background": true,
-<<<<<<< HEAD
       "aug": {"input_height": 256,
               "input_width": 256,
-=======
-      "aug": {"input_height": 304,
-              "input_width": 304,
->>>>>>> 393a6f983877eab17583c85dc0a37516b68cbbc5
               "mean": [0.3, 0.3, 0.3],
               "std": [0.2, 0.3, 0.2],
               "p_flip": 0.5,
@@ -30,18 +25,21 @@
   },
   "training": {
       "optimization": {
+        "lr": 0.001,
+        "final_lr": 0.0001,
         "lr_encoder": 0.0001,
-        "lr_decoder": 0.001,
-        "decay_epochs": [18, 25],
-        "decay_gamma": 0.2,
         "optimizer": "adam",
-        "weight_decay": 0.0
+        "start_warmup": 0,
+        "warmup_epochs": 1,
+        "weight_decay": 0.001,
+        "lr_schedule_mode": "cos"
       },
       "batch_size": 8,
       "epochs": 30,
-      "lr": 0.001,
       "activation": "softmax2d",
       "loss_func": "lovasz",
+      "class_weights": [],
+      "metric": "iou_per_ds",
       "num_workers": 1,
       "val_every_epoch": 1,
       "use_fp16": false

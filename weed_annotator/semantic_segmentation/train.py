@@ -15,9 +15,9 @@ from weed_annotator.semantic_segmentation import optimizer, metrics, utils, aug,
 from weed_annotator.semantic_segmentation.models.xResnet_encoder import xResnetEncoder
 import matplotlib.pyplot as plt
 import numpy as np
-import apex
+#import apex
 
-#os.environ['WANDB_MODE'] = 'dryrun'
+os.environ['WANDB_MODE'] = 'dryrun'
 DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 os.environ["LANG"] = "C.UTF-8"
 os.environ["LANGUAGE"] = "C.UTF-8"
@@ -92,7 +92,7 @@ def train_network(config):
         encoder_weights = pretrained_weights
     else:
         encoder_weights = None
-    num_classes = len(config["data"]["labels_to_consider"]) + 1  # Background class
+    num_classes = len(config["data"]["labels_to_consider"]) + 1  # + Background class
 
     if config["arch"]["type"] == "BiSeNetV1":
         # ToDo
@@ -111,7 +111,7 @@ def train_network(config):
         trainable_params = [{'params': filter(lambda p: p.requires_grad, model.decoder.parameters())},
                             {'params': filter(lambda p: p.requires_grad, model.segmentation_head.parameters())},
                             {'params': filter(lambda p: p.requires_grad, model.encoder.parameters()),
-                             'lr': config["training"]["lr"] / 10}]
+                             'lr': config["training"]["optimization"]["lr"] / 10}]
 
         if config["training"]["optimization"]["lr_encoder"] == 0.0:
             logger.info("Freezing encoder parameters.")
@@ -124,31 +124,27 @@ def train_network(config):
 
     # Optimization
     optim = optimizer.get_optimizer(model, trainable_params, config)
-    warmup_lr_schedule = np.linspace(config["training"]["optimization"]["start_warmup"],
-                               config["training"]["optimization"]["lr"],
-                               len(train_loader) * config["training"]["optimization"]["warmup_epochs"])
-    iters = np.arange(len(train_loader) * (config["training"]["epochs"] - config["training"]["optimization"]["warmup_epochs"]))
-    if config["training"]["optimization"]["lr_schedule_mode"] == "cos":
-        cosine_lr_schedule = np.array([config["training"]["optimization"]["final_lr"] +
-                                       0.5 * (config["training"]["optimization"]["lr"] -
-                                       config["training"]["optimization"]["final_lr"]) * (1 + math.cos(math.pi * t / (len(train_loader) * (config["training"]["epochs"] -
-                                       config["training"]["optimization"]["warmup_epochs"]))))
-                                       for t in iters])
-    elif config["training"]["optimization"]["lr_schedule_mode"] == "cos_cycle":
-        cosine_lr_schedule = np.array([config["training"]["optimization"]["lr"] - t/((len(train_loader) * (config["training"]["epochs"] -
-                                       config["training"]["optimization"]["warmup_epochs"]))) * (config["training"]["optimization"]["lr"] - config["training"]["optimization"]["final_lr"]) -
-                                       t/((len(train_loader) * (config["training"]["epochs"] -
-                                       config["training"]["optimization"]["warmup_epochs"]))) * (config["training"]["optimization"]["lr"] -
-                                       config["training"]["optimization"]["final_lr"] - t/((len(train_loader) * (config["training"]["epochs"] -
-                                       config["training"]["optimization"]["warmup_epochs"]))) * (config["training"]["optimization"]["lr"] - config["training"]["optimization"]["final_lr"])) * (1 + math.sin(math.pi * t / (len(train_loader) * (int(config["training"]["epochs"]/5) -
-                                       config["training"]["optimization"]["warmup_epochs"]))))
-                                       for t in iters])
-
-    lr_scheduler = np.concatenate((warmup_lr_schedule, cosine_lr_schedule))
+    lr_scheduler = optimizer.get_lr_schedule(config["training"]["optimization"]["lr_schedule_mode"],
+                                             config["training"]["optimization"]["lr"],
+                                             config["training"]["optimization"]["final_lr"],
+                                             config["training"]["epochs"],
+                                             train_loader,
+                                             config["training"]["optimization"]["start_warmup"],
+                                             config["training"]["optimization"]["warmup_epochs"]
+                                             )
     if config["training"]["use_fp16"]:
         model, optim = apex.amp.initialize(model, optim, opt_level="O1")
 
     # Loss
+    if config["training"]["class_weights"]:
+        if len(config["training"]["class_weights"]) != len(train_dataset.label_dict):
+            logger.error("The number of class weights must fit the number of labels.")
+            return -1
+        else:
+            weights = torch.tensor(config["training"]["class_weights"], dtype=torch.float32)
+            weights = weights / weights.sum()
+            weights = weights.cuda()
+
     loss_func = config["training"]["loss_func"]
     if loss_func == "lovasz":
         criterion = losses.LovaszLoss()
@@ -156,6 +152,11 @@ def train_network(config):
         criterion = smp.utils.losses.DiceLoss()
     elif loss_func == "jaccard":
         criterion = smp.utils.losses.JaccardLoss()
+    elif loss_func == "cross_entropy":
+        if config["training"]["class_weights"]:
+            criterion = torch.nn.CrossEntropyLoss(weight=weights)
+        else:
+            criterion = torch.nn.CrossEntropyLoss()
 
     # Resume
     to_restore = {"epoch": 0, "best_iou": 0.0}
@@ -165,7 +166,6 @@ def train_network(config):
             run_variables=to_restore,
             state_dict=model,
             optimizer=optim,
-            # scheduler=scheduler,
         )
     start_epoch = to_restore["epoch"]
     best_iou = to_restore["best_iou"]
@@ -188,7 +188,6 @@ def train_network(config):
             "epoch": epoch + 1,
             "state_dict": model.state_dict(),
             "optimizer": optim.state_dict(),
-            # "scheduler": scheduler.state_dict(),
             "best_iou": best_iou
         }
         torch.save(save_dict, os.path.join(dump_checkpoints, "checkpoint-recent.pth.tar"))
@@ -209,7 +208,6 @@ def train_network(config):
                     os.path.join(dump_checkpoints, "checkpoint-best.pth.tar"),
                 )
 
-        # scheduler.step()
     logger.info(f"Training finished with best mean IoU of {best_iou}.")
 
 
@@ -233,7 +231,16 @@ def train(train_loader, model, optimizer, criterion, epoch, lr_scheduler, logger
         inp = inp.to(DEVICE)
         target = target.to(DEVICE)
         output = model(inp)
-        loss = criterion(output, target)
+
+        # Remove overlapping targets according to Agriculture-Vision Paper
+        final_label_predictions = metrics.arg_max(output.clone())
+        target = metrics.non_overlapping_target(final_label_predictions, target)
+
+        # Loss
+        if config["training"]["loss_func"] == "cross_entropy":
+            loss = criterion(output, torch.argmax(target, dim=1).long())
+        else:
+            loss = criterion(output, target)
 
         # compute the gradients
         optimizer.zero_grad()
@@ -248,10 +255,10 @@ def train(train_loader, model, optimizer, criterion, epoch, lr_scheduler, logger
 
         # update stats
         if config["training"]["metric"] == "iou_per_batch":
-            miou = metrics.mIoU_per_batch(output.data, target.float().data)
+            miou = metrics.mIoU_per_batch(final_label_predictions.data, target.float().data)
             mean_ious.update(miou.item(), inp.size(0))
         elif config["training"]["metric"] == "iou_per_ds":
-            inter_per_class_now, union_per_class_now = metrics.inter_union_per_class(output.data, target.float().data)
+            inter_per_class_now, union_per_class_now = metrics.inter_union_per_class(final_label_predictions.data, target.float().data)
             inter_per_class += inter_per_class_now
             union_per_class += union_per_class_now
         losses.update(loss.item(), inp.size(0))
@@ -266,6 +273,7 @@ def train(train_loader, model, optimizer, criterion, epoch, lr_scheduler, logger
         iou_per_class = inter_per_class / union_per_class
         mean_iou = np.mean(iou_per_class)
 
+    # Logging
     if writer is None:
         wandb.log({"loss/train": losses.avg}, step=iteration)
         wandb.log({"mIoU/train": mean_iou}, step=iteration)
@@ -296,54 +304,33 @@ def val(valid_loader, model, criterion, iteration, logger, writer, config):
         union_per_class = np.zeros(len(class_labels))
 
     model.eval()
-    log_images = []
     with torch.no_grad():
         for i, (inp, target) in enumerate(valid_loader):
             inp = inp.to(DEVICE)
             target = target.to(DEVICE)
             output = model(inp)
-            loss = criterion(output, target)
+
+            # Remove overlapping targets according to Agriculture-Vision Paper
+            final_label_predictions = metrics.arg_max(output)
+            target = metrics.non_overlapping_target(final_label_predictions, target)
+
+            # Loss
+            if config["training"]["loss_func"] == "cross_entropy":
+                loss = criterion(output, torch.argmax(target, dim=1).long())
+            else:
+                loss = criterion(output, target)
             if config["training"]["metric"] == "iou_per_batch":
-                miou = metrics.mIoU_per_batch(output, target.float())
+                miou = metrics.mIoU_per_batch(final_label_predictions, target.float())
                 mean_ious.update(miou.item(), inp.size(0))
             elif config["training"]["metric"] == "iou_per_ds":
-                inter_per_class_now, union_per_class_now = metrics.inter_union_per_class(output, target.float())
+                inter_per_class_now, union_per_class_now = metrics.inter_union_per_class(final_label_predictions, target.float())
                 inter_per_class += inter_per_class_now
                 union_per_class += union_per_class_now
 
             # update stats
             losses.update(loss.item(), inp.size(0))
 
-            # Logging images
-            if config["logging"]["log_images"]:
-                index = 1
-                img_upload_size = (300, 300)
-                image = inp[index, :, :, :].cpu().numpy()
-                image = np.swapaxes(image, 0, 1)
-                image = np.swapaxes(image, 1, 2)
-                image = cv2.resize(image, img_upload_size)
-
-                target = target[index, :, :, :]
-                gt_mask = torch.argmax(target, dim=0)
-                gt_mask = gt_mask.cpu().numpy().astype(np.uint8)
-                gt_mask = cv2.resize(gt_mask, img_upload_size)
-
-                output = output[index, :, :, :]
-                pred_mask = torch.argmax(output, dim=0)
-                pred_mask = pred_mask.cpu().numpy().astype(np.uint8)
-                pred_mask = cv2.resize(pred_mask, img_upload_size)
-                if writer is None:
-                    wandb_image = wandb.Image(image, masks={
-                        "predictions": {
-                            "mask_data": pred_mask,
-                            "class_labels": valid_loader.dataset.label_dict
-                        },
-                        "ground_truth": {
-                            "mask_data": gt_mask,
-                            "class_labels": valid_loader.dataset.label_dict
-                        },
-                    })
-                    log_images.append(wandb_image)
+    # Logging stats
     if config["training"]["metric"] == "iou_per_batch":
         mean_iou = mean_ious.avg
     elif config["training"]["metric"] == "iou_per_ds":
@@ -356,7 +343,8 @@ def val(valid_loader, model, criterion, iteration, logger, writer, config):
     if writer is None:
         wandb.log({"loss/val": losses.avg}, step=iteration)
         wandb.log({"mIoU/val": mean_iou}, step=iteration)
-        if log_images:
+        if config["logging"]["log_images"]:
+            log_images = utils.get_wandb_img(4, inp, target, final_label_predictions, valid_loader.dataset.label_dict)
             wandb.log({"predictions": log_images}, step=iteration)
     else:
         writer.add_scalar("loss/val", losses.avg, iteration)

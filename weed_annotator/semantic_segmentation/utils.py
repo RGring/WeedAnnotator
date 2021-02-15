@@ -1,3 +1,4 @@
+import cv2
 import json
 from logging import getLogger
 import os
@@ -49,6 +50,38 @@ def init_logging(config):
     logger.info("The experiment will be stored in %s\n" % log_path)
 
     return logger, writer, dump_checkpoints
+
+def get_wandb_img(num_images, input, target, prediction, label_dict):
+    log_images = []
+    num_images = min(num_images, target.size(0))
+    for index in range(num_images):
+        img_upload_size = (300, 300)
+        image = input[index, :, :, :].cpu().numpy()
+        image = np.swapaxes(image, 0, 1)
+        image = np.swapaxes(image, 1, 2)
+        image = cv2.resize(image, img_upload_size)
+
+        gt_mask = target[index, :, :, :]
+        gt_mask = torch.argmax(gt_mask, dim=0)
+        gt_mask = gt_mask.cpu().numpy().astype(np.uint8)
+        gt_mask = cv2.resize(gt_mask, img_upload_size)
+
+        pred_mask = prediction[index, :, :, :]
+        pred_mask = torch.argmax(pred_mask, dim=0)
+        pred_mask = pred_mask.cpu().numpy().astype(np.uint8)
+        pred_mask = cv2.resize(pred_mask, img_upload_size)
+        wandb_image = wandb.Image(image, masks={
+            "predictions": {
+                "mask_data": pred_mask,
+                "class_labels": label_dict
+            },
+            "ground_truth": {
+                "mask_data": gt_mask,
+                "class_labels": label_dict
+            },
+        })
+        log_images.append(wandb_image)
+    return log_images
 
 class AverageMeter(object):
     """computes and stores the average and current value"""
