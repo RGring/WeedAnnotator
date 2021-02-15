@@ -56,8 +56,8 @@ smp.encoders.encoders["xresnet18"] = {
     "encoder": xResnetEncoder,
     "params": {
         "arch": "xresnet18",
-        "out_channels": [3, 32, 64, 128, 256, 512],
-        "module_index": [-1, 0, 3, 5, 6, 7, 8],
+        "out_channels": [3, 64, 64, 128, 256, 512],
+        "module_index": [-1, 2, 4, 5, 6, 7, 8],
         "depth": 5
     },
 }
@@ -66,8 +66,17 @@ smp.encoders.encoders["xresnet34"] = {
     "encoder": xResnetEncoder,
     "params": {
         "arch": "xresnet34",
-        "out_channels": [3, 32, 64, 128, 256, 512],
-        "module_index": [-1, 0, 3, 5, 6, 7, 8],
+        "out_channels": [3, 64, 64, 128, 256, 512],
+        "module_index": [-1, 2, 4, 5, 6, 7],
+        "depth": 5
+    },
+}
+smp.encoders.encoders["xresnet50"] = {
+    "encoder": xResnetEncoder,
+    "params": {
+        "arch": "xresnet50",
+        "out_channels": [3, 64, 256, 512, 1024, 2048],
+        "module_index": [-1, 2, 4, 5, 6, 7],
         "depth": 5
     },
 }
