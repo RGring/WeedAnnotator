@@ -15,9 +15,9 @@ from weed_annotator.semantic_segmentation import optimizer, metrics, utils, aug,
 from weed_annotator.semantic_segmentation.models.xResnet_encoder import xResnetEncoder
 import matplotlib.pyplot as plt
 import numpy as np
-#import apex
+import apex
 
-os.environ['WANDB_MODE'] = 'dryrun'
+#os.environ['WANDB_MODE'] = 'dryrun'
 DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 os.environ["LANG"] = "C.UTF-8"
 os.environ["LANGUAGE"] = "C.UTF-8"
@@ -229,7 +229,7 @@ def train(train_loader, model, optimizer, criterion, epoch, lr_scheduler, logger
         optimizer.param_groups[2]["lr"] /= 10
 
         inp = inp.to(DEVICE)
-        target = target.to(DEVICE)
+        target = target.to(DEVICE).float()
         output = model(inp)
 
         # Remove overlapping targets according to Agriculture-Vision Paper
@@ -255,10 +255,10 @@ def train(train_loader, model, optimizer, criterion, epoch, lr_scheduler, logger
 
         # update stats
         if config["training"]["metric"] == "iou_per_batch":
-            miou = metrics.mIoU_per_batch(final_label_predictions.data, target.float().data)
+            miou = metrics.mIoU_per_batch(final_label_predictions.data, target.data)
             mean_ious.update(miou.item(), inp.size(0))
         elif config["training"]["metric"] == "iou_per_ds":
-            inter_per_class_now, union_per_class_now = metrics.inter_union_per_class(final_label_predictions.data, target.float().data)
+            inter_per_class_now, union_per_class_now = metrics.inter_union_per_class(final_label_predictions.data, target.data)
             inter_per_class += inter_per_class_now
             union_per_class += union_per_class_now
         losses.update(loss.item(), inp.size(0))
@@ -307,7 +307,7 @@ def val(valid_loader, model, criterion, iteration, logger, writer, config):
     with torch.no_grad():
         for i, (inp, target) in enumerate(valid_loader):
             inp = inp.to(DEVICE)
-            target = target.to(DEVICE)
+            target = target.to(DEVICE).float()
             output = model(inp)
 
             # Remove overlapping targets according to Agriculture-Vision Paper
@@ -320,10 +320,10 @@ def val(valid_loader, model, criterion, iteration, logger, writer, config):
             else:
                 loss = criterion(output, target)
             if config["training"]["metric"] == "iou_per_batch":
-                miou = metrics.mIoU_per_batch(final_label_predictions, target.float())
+                miou = metrics.mIoU_per_batch(final_label_predictions, target)
                 mean_ious.update(miou.item(), inp.size(0))
             elif config["training"]["metric"] == "iou_per_ds":
-                inter_per_class_now, union_per_class_now = metrics.inter_union_per_class(final_label_predictions, target.float())
+                inter_per_class_now, union_per_class_now = metrics.inter_union_per_class(final_label_predictions, target)
                 inter_per_class += inter_per_class_now
                 union_per_class += union_per_class_now
 
