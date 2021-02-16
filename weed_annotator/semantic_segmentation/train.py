@@ -53,6 +53,7 @@ def train_network_with_wandb(config):
 
 
 def train_network(config):
+    global learnable_class_weights
     # Setting seed for reproducability
     utils.set_seeds()
 
@@ -122,19 +123,6 @@ def train_network(config):
         wandb.watch(model)
     logger.info(f"Building model done with pretrained_weights: {pretrained_weights}")
 
-    # Optimization
-    optim = optimizer.get_optimizer(model, trainable_params, config)
-    lr_scheduler = optimizer.get_lr_schedule(config["training"]["optimization"]["lr_schedule_mode"],
-                                             config["training"]["optimization"]["lr"],
-                                             config["training"]["optimization"]["final_lr"],
-                                             config["training"]["epochs"],
-                                             train_loader,
-                                             config["training"]["optimization"]["start_warmup"],
-                                             config["training"]["optimization"]["warmup_epochs"]
-                                             )
-    if config["training"]["use_fp16"]:
-        model, optim = apex.amp.initialize(model, optim, opt_level="O1")
-
     # Loss
     if config["training"]["class_weights"]:
         if len(config["training"]["class_weights"]) != len(train_dataset.label_dict):
@@ -150,6 +138,13 @@ def train_network(config):
         criterion = losses.LovaszLoss()
     elif loss_func == "dice":
         criterion = smp.utils.losses.DiceLoss()
+    elif loss_func == "weighted_dice":
+        if config["training"]["class_weights"]:
+            criterion = losses.WeightedDiceLoss(weight=weights)
+        else:
+            criterion = losses.WeightedDiceLoss()
+            learnable_class_weights = [torch.zeros((1,), requires_grad=True) for i in range(num_classes)]
+            trainable_params.append({"params": learnable_class_weights})
     elif loss_func == "jaccard":
         criterion = smp.utils.losses.JaccardLoss()
     elif loss_func == "cross_entropy":
@@ -157,6 +152,19 @@ def train_network(config):
             criterion = torch.nn.CrossEntropyLoss(weight=weights)
         else:
             criterion = torch.nn.CrossEntropyLoss()
+
+    # Optimization
+    optim = optimizer.get_optimizer(model, trainable_params, config)
+    lr_scheduler = optimizer.get_lr_schedule(config["training"]["optimization"]["lr_schedule_mode"],
+                                             config["training"]["optimization"]["lr"],
+                                             config["training"]["optimization"]["final_lr"],
+                                             config["training"]["epochs"],
+                                             train_loader,
+                                             config["training"]["optimization"]["start_warmup"],
+                                             config["training"]["optimization"]["warmup_epochs"]
+                                             )
+    if config["training"]["use_fp16"]:
+        model, optim = apex.amp.initialize(model, optim, opt_level="O1")
 
     # Resume
     to_restore = {"epoch": 0, "best_iou": 0.0}
@@ -239,6 +247,8 @@ def train(train_loader, model, optimizer, criterion, epoch, lr_scheduler, logger
         # Loss
         if config["training"]["loss_func"] == "cross_entropy":
             loss = criterion(output, torch.argmax(target, dim=1).long())
+        elif config["training"]["loss_func"] == "weighted_dice":
+            loss = criterion(output, target, weight=learnable_class_weights)
         else:
             loss = criterion(output, target)
 
@@ -317,6 +327,8 @@ def val(valid_loader, model, criterion, iteration, logger, writer, config):
             # Loss
             if config["training"]["loss_func"] == "cross_entropy":
                 loss = criterion(output, torch.argmax(target, dim=1).long())
+            elif config["training"]["loss_func"] == "weighted_dice":
+                loss = criterion(output, target, weight=learnable_class_weights)
             else:
                 loss = criterion(output, target)
             if config["training"]["metric"] == "iou_per_batch":
