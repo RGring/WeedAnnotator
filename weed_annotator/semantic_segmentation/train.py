@@ -21,7 +21,7 @@ os.environ['WANDB_MODE'] = 'dryrun'
 DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 os.environ["LANG"] = "C.UTF-8"
 os.environ["LANGUAGE"] = "C.UTF-8"
-
+INF_FP16 = 2 ** 15
 
 # ToDo: Possibly extend this function. Depending on pretrained models that should be loaded.
 def load_weights(model, path_to_weights):
@@ -152,6 +152,8 @@ def train_network(config):
             criterion = torch.nn.CrossEntropyLoss(weight=weights)
         else:
             criterion = torch.nn.CrossEntropyLoss()
+    elif loss_func == "BCEWithLogitsLoss":
+        criterion = torch.nn.BCEWithLogitsLoss()
 
     # Optimization
     optim = optimizer.get_optimizer(model, trainable_params, config)
@@ -230,7 +232,7 @@ def train(train_loader, model, optimizer, criterion, epoch, lr_scheduler, logger
         union_per_class = np.zeros(len(class_labels))
 
     model.train()
-    for iter_epoch, (inp, target) in enumerate(train_loader):
+    for iter_epoch, (inp, target, valid_mask) in enumerate(train_loader):
         iteration = epoch * len(train_loader) + iter_epoch
         for i, param_group in enumerate(optimizer.param_groups):
             param_group["lr"] = lr_scheduler[iteration]
@@ -239,18 +241,20 @@ def train(train_loader, model, optimizer, criterion, epoch, lr_scheduler, logger
         inp = inp.to(DEVICE)
         target = target.to(DEVICE)
         output = model(inp)
+        output_valid = output.clone()
+        output_valid[~valid_mask.unsqueeze(1).expand_as(output_valid).bool()] = -INF_FP16
 
         # Remove overlapping targets according to Agriculture-Vision Paper
-        final_label_predictions = metrics.arg_max(output.clone())
+        final_label_predictions = metrics.arg_max(output_valid.clone())
         target = metrics.non_overlapping_target(final_label_predictions, target)
 
         # Loss
         if config["training"]["loss_func"] == "cross_entropy":
-            loss = criterion(output, torch.argmax(target, dim=1).long())
+            loss = criterion(output_valid, torch.argmax(target, dim=1).long())
         elif config["training"]["loss_func"] == "weighted_dice":
-            loss = criterion(output, target, weight=learnable_class_weights)
+            loss = criterion(output_valid, target, weight=learnable_class_weights)
         else:
-            loss = criterion(output, target)
+            loss = criterion(output_valid, target)
 
         # compute the gradients
         optimizer.zero_grad()
@@ -315,22 +319,24 @@ def val(valid_loader, model, criterion, iteration, logger, writer, config):
 
     model.eval()
     with torch.no_grad():
-        for i, (inp, target) in enumerate(valid_loader):
+        for i, (inp, target, valid_mask) in enumerate(valid_loader):
             inp = inp.to(DEVICE)
             target = target.to(DEVICE)
             output = model(inp)
+            output_valid = output.clone()
+            output_valid[~valid_mask.unsqueeze(1).expand_as(output_valid).bool()] = -INF_FP16
 
             # Remove overlapping targets according to Agriculture-Vision Paper
-            final_label_predictions = metrics.arg_max(output)
+            final_label_predictions = metrics.arg_max(output_valid)
             target = metrics.non_overlapping_target(final_label_predictions, target)
 
             # Loss
             if config["training"]["loss_func"] == "cross_entropy":
-                loss = criterion(output, torch.argmax(target, dim=1).long())
+                loss = criterion(output_valid, torch.argmax(target, dim=1).long())
             elif config["training"]["loss_func"] == "weighted_dice":
-                loss = criterion(output, target, weight=learnable_class_weights)
+                loss = criterion(output_valid, target, weight=learnable_class_weights)
             else:
-                loss = criterion(output, target)
+                loss = criterion(output_valid, target)
             if config["training"]["metric"] == "iou_per_batch":
                 miou = metrics.mIoU_per_batch(final_label_predictions, target.float())
                 mean_ious.update(miou.item(), inp.size(0))

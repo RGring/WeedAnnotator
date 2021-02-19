@@ -19,7 +19,7 @@ def get_training_augmentations(aug_config):
     train_augments.append(albu.Resize(aug_config["input_width"], aug_config["input_height"], always_apply=True))
     train_augments.append(albu.Normalize(mean=aug_config["mean"], std=aug_config["std"]))
     train_augments.append(ToTensorV2())
-    return albu.Compose(train_augments)
+    return albu.Compose(train_augments,  additional_targets={"mask1": "mask"})
 
 
 def get_validation_augmentations(aug_config):
@@ -27,4 +27,4 @@ def get_validation_augmentations(aug_config):
     val_augments.append(albu.Resize(aug_config["input_width"], aug_config["input_height"], always_apply=True))
     val_augments.append(albu.Normalize(mean=aug_config["mean"], std=aug_config["std"]))
     val_augments.append(ToTensorV2())
-    return albu.Compose(val_augments)
+    return albu.Compose(val_augments, additional_targets={"mask1": "mask"})

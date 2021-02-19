@@ -34,6 +34,44 @@ class AerialFarmlandDataset(WeedDataset):
         self.augmentation = augmentation
         self._last_img_props = None
 
+    def __getitem__(self, index):
+        img_props = self.image_list[index]
+
+        # Loading image
+        image_path = img_props["img_id"]
+        image = cv2.imread(image_path, cv2.IMREAD_UNCHANGED)
+        img_props["img_width"] = image.shape[0]
+        img_props["img_height"] = image.shape[1]
+        img_props["rotate"] = False
+
+        # Loading mask
+        mask = self._create_mask(image_path, image)
+
+        # Loading validation mask
+        valid_pixel_mask = cv2.imread(f"{os.path.dirname(image_path)}/../../masks/{os.path.basename(image_path).replace('.jpg', '.png')}")
+        valid_farmland_mask = cv2.imread(f"{os.path.dirname(image_path)}/../../boundaries/{os.path.basename(image_path).replace('.jpg', '.png')}")
+        valid_mask = (valid_pixel_mask[:, :, 0] / 255) * (valid_farmland_mask[:, :, 0] / 255)
+        # Make sure we always have the same aspect ratio.
+        if image.shape[0] < image.shape[1]:
+            img_props["rotate"] = True
+            image = cv2.rotate(image, cv2.ROTATE_90_CLOCKWISE)
+            mask = cv2.rotate(mask, cv2.ROTATE_90_CLOCKWISE)
+            valid_mask = cv2.rotate(valid_mask, cv2.ROTATE_90_CLOCKWISE)
+
+        # plt.imshow(image)
+        # plt.show()
+
+        # Augmentations
+        if self.augmentation:
+            sample = self.augmentation(image=image, mask=mask, mask1=valid_mask)
+            image, mask, valid_mask = sample['image'], sample['mask'], sample['mask1']
+        mask = torch.transpose(mask, 1, 2)
+        mask = torch.transpose(mask, 0, 1)
+        mask = mask * valid_mask
+        # self._plot_overlay(image, mask, True)
+        self._last_img_props = img_props
+        return image, mask, valid_mask
+
     def _get_img_list(self, file_ids, skip_background):
         files = []
         file_ids.sort()

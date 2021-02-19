@@ -90,7 +90,7 @@ class WeedDataset(Dataset):
         mask = torch.transpose(mask, 0, 1)
         # self._plot_overlay(image, mask, True)
         self._last_img_props = img_props
-        return image, mask
+        return image, mask, torch.ones((mask.shape[1], mask.shape[2]))
 
     def _create_mask(self, image_path, image):
         class_masks = {}
