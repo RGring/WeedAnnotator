@@ -57,7 +57,7 @@ smp.encoders.encoders["xresnet18"] = {
     "params": {
         "arch": "xresnet18",
         "out_channels": [3, 64, 64, 128, 256, 512],
-        "module_index": [-1, 2, 4, 5, 6, 7, 8],
+        "module_index": [-1, 2, 4, 5, 6, 7],
         "depth": 5
     },
 }
