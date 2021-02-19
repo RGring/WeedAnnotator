@@ -25,11 +25,14 @@ class WeightedDiceLoss(smp.utils.base.Loss):
     def forward(self, y_pr, y_gt, weight=None):
         y_pr = self.activation(y_pr)
         loss = 0
+        weight_sum = 0.00001
+        for w in weight:
+            weight_sum += w
         if weight != None:
             self._weight = weight
         if self._weight != None:
             for i in range(y_pr.size(1)):
-                loss += self.dice_simple(y_pr[:, i, :, :], y_gt[:, i, :, :]) * self._weight[i]
+                loss += (self.dice_simple(y_pr[:, i, :, :], y_gt[:, i, :, :]) - 1) * (self._weight[i]/weight_sum)
             loss = loss/len(self._weight)
         else:
             loss += self.dice_simple(y_pr, y_gt)
