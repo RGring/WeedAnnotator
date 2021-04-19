@@ -29,6 +29,9 @@ class WeightedDiceLoss(smp.utils.base.Loss):
     def forward(self, y_pr, y_gt, weight=None):
         y_pr = self.activation(y_pr)
         loss = 0
+        weight_sum = 0.00001
+        for w in weight:
+            weight_sum += w
         if weight != None:
             self._weight = weight
         if self._weight != None:

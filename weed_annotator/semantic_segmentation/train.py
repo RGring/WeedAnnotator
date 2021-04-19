@@ -23,7 +23,7 @@ INF_FP16 = 2 ** 15
 DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 os.environ["LANG"] = "C.UTF-8"
 os.environ["LANGUAGE"] = "C.UTF-8"
-
+INF_FP16 = 2 ** 15
 
 # ToDo: Possibly extend this function. Depending on pretrained models that should be loaded.
 def load_weights(model, path_to_weights):
@@ -262,6 +262,7 @@ def train(train_loader, model, optimizer, criterion, epoch, lr_scheduler, logger
             loss = criterion(output_valid, target, weight=learnable_class_weights)
         else:
             loss = criterion(output_valid, target)
+            
         # compute the gradients
         optimizer.zero_grad()
         if config["training"]["use_fp16"]:
@@ -329,6 +330,8 @@ def val(valid_loader, model, criterion, iteration, logger, writer, config):
             inp = inp.to(DEVICE)
             target = target.to(DEVICE).float()
             output = model(inp)
+            output_valid = output.clone()
+            output_valid[~valid_mask.unsqueeze(1).expand_as(output_valid).bool()] = -INF_FP16
 
             output_valid = output.clone()
             # output_valid[~valid_mask.unsqueeze(1).expand_as(output_valid).bool()] = -INF_FP16
