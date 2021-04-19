@@ -12,6 +12,11 @@ def get_optimizer(model, trainable_params, config):
             trainable_params,
             lr=lr_base,
             weight_decay=wd)
+    elif opt == "adamW":
+        optimizer = torch.optim.AdamW(
+            trainable_params,
+            lr=lr_base,
+            weight_decay=wd)
     elif opt == "sdg":
         optimizer = torch.optim.SGD(
             trainable_params,

@@ -41,7 +41,7 @@ class WeedDataset(Dataset):
             # ToDo: Make optional to only consider foreground masks
             annotation = AnnotationConverter.read_cvat_by_id(f"{os.path.dirname(id)}/annotations.xml",
                                                              os.path.basename(id))
-            if len(annotation.get_polygons()) == 0:
+            if len(annotation.get_polygons()) == 0 and skip_background:
                 continue
             if self.num_subimg_splits > 0:
                 for i in range(self.num_subimg_splits):
@@ -90,7 +90,7 @@ class WeedDataset(Dataset):
         mask = torch.transpose(mask, 0, 1)
         # self._plot_overlay(image, mask, True)
         self._last_img_props = img_props
-        return image, mask
+        return image, mask, torch.ones((1, image.size(1), image.size(2)))
 
     def _create_mask(self, image_path, image):
         class_masks = {}

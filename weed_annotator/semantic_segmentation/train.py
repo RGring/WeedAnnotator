@@ -16,6 +16,8 @@ from weed_annotator.semantic_segmentation.models.xResnet_encoder import xResnetE
 import matplotlib.pyplot as plt
 import numpy as np
 import apex
+INF_FP16 = 2 ** 15
+
 
 #os.environ['WANDB_MODE'] = 'dryrun'
 DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -119,17 +121,19 @@ def train_network(config):
             for param in model.encoder.parameters():
                 param.requires_grad = False
     model.to(DEVICE)
-    if tb_writer is None:
+    if config["logging"]["tool"] == "wandb":
         wandb.watch(model)
     logger.info(f"Building model done with pretrained_weights: {pretrained_weights}")
 
     # Loss
+    weights = None
     if config["training"]["class_weights"]:
         if len(config["training"]["class_weights"]) != len(train_dataset.label_dict):
             logger.error("The number of class weights must fit the number of labels.")
             return -1
         else:
-            weights = torch.tensor(config["training"]["class_weights"], dtype=torch.float32)
+            inv_weights = [1/num for num in config["training"]["class_weights"]]
+            weights = torch.tensor(inv_weights, dtype=torch.float32)
             weights = weights / weights.sum()
             weights = weights.cuda()
 
@@ -139,11 +143,12 @@ def train_network(config):
     elif loss_func == "dice":
         criterion = smp.utils.losses.DiceLoss()
     elif loss_func == "weighted_dice":
-        if config["training"]["class_weights"]:
+        if weights != None:
+            learnable_class_weights = None
             criterion = losses.WeightedDiceLoss(weight=weights)
         else:
             criterion = losses.WeightedDiceLoss()
-            learnable_class_weights = [torch.zeros((1,), requires_grad=True) for i in range(num_classes)]
+            learnable_class_weights = [torch.zeros((1,), requires_grad=True, device=DEVICE) for i in range(num_classes)]
             trainable_params.append({"params": learnable_class_weights})
     elif loss_func == "jaccard":
         criterion = smp.utils.losses.JaccardLoss()
@@ -152,6 +157,10 @@ def train_network(config):
             criterion = torch.nn.CrossEntropyLoss(weight=weights)
         else:
             criterion = torch.nn.CrossEntropyLoss()
+    elif loss_func == "BCEWithLogitsLoss":
+        criterion = torch.nn.BCEWithLogitsLoss()
+    elif loss_func == "focal_loss":
+        criterion = losses.FocalLoss()
 
     # Optimization
     optim = optimizer.get_optimizer(model, trainable_params, config)
@@ -230,7 +239,7 @@ def train(train_loader, model, optimizer, criterion, epoch, lr_scheduler, logger
         union_per_class = np.zeros(len(class_labels))
 
     model.train()
-    for iter_epoch, (inp, target) in enumerate(train_loader):
+    for iter_epoch, (inp, target, valid_mask) in enumerate(train_loader):
         iteration = epoch * len(train_loader) + iter_epoch
         for i, param_group in enumerate(optimizer.param_groups):
             param_group["lr"] = lr_scheduler[iteration]
@@ -239,19 +248,20 @@ def train(train_loader, model, optimizer, criterion, epoch, lr_scheduler, logger
         inp = inp.to(DEVICE)
         target = target.to(DEVICE).float()
         output = model(inp)
-
+        output_valid = output.clone()
+        # output_valid[~valid_mask.unsqueeze(1).expand_as(output_valid).bool()] = 0
+        # print(torch.min(output_valid))
         # Remove overlapping targets according to Agriculture-Vision Paper
-        final_label_predictions = metrics.arg_max(output.clone())
+        final_label_predictions = metrics.arg_max(output_valid.clone())
         target = metrics.non_overlapping_target(final_label_predictions, target)
 
         # Loss
-        if config["training"]["loss_func"] == "cross_entropy":
-            loss = criterion(output, torch.argmax(target, dim=1).long())
+        if config["training"]["loss_func"] in [ "cross_entropy", "focal_loss"]:
+            loss = criterion(output_valid, torch.argmax(target, dim=1).long())
         elif config["training"]["loss_func"] == "weighted_dice":
-            loss = criterion(output, target, weight=learnable_class_weights)
+            loss = criterion(output_valid, target, weight=learnable_class_weights)
         else:
-            loss = criterion(output, target)
-
+            loss = criterion(output_valid, target)
         # compute the gradients
         optimizer.zero_grad()
         if config["training"]["use_fp16"]:
@@ -284,10 +294,10 @@ def train(train_loader, model, optimizer, criterion, epoch, lr_scheduler, logger
         mean_iou = np.mean(iou_per_class)
 
     # Logging
-    if writer is None:
+    if config["logging"]["tool"] == "wandb":
         wandb.log({"loss/train": losses.avg}, step=iteration)
         wandb.log({"mIoU/train": mean_iou}, step=iteration)
-    else:
+    elif config["logging"]["tool"] == "tb" and writer != None:
         writer.add_scalar("loss/train", losses.avg, iteration)
         writer.add_scalar("mIoU/train", mean_iou, iteration)
 
@@ -315,22 +325,26 @@ def val(valid_loader, model, criterion, iteration, logger, writer, config):
 
     model.eval()
     with torch.no_grad():
-        for i, (inp, target) in enumerate(valid_loader):
+        for i, (inp, target, valid_mask) in enumerate(valid_loader):
             inp = inp.to(DEVICE)
             target = target.to(DEVICE).float()
             output = model(inp)
 
+            output_valid = output.clone()
+            # output_valid[~valid_mask.unsqueeze(1).expand_as(output_valid).bool()] = -INF_FP16
+
             # Remove overlapping targets according to Agriculture-Vision Paper
-            final_label_predictions = metrics.arg_max(output)
+            final_label_predictions = metrics.arg_max(output_valid.clone())
             target = metrics.non_overlapping_target(final_label_predictions, target)
 
+
             # Loss
-            if config["training"]["loss_func"] == "cross_entropy":
-                loss = criterion(output, torch.argmax(target, dim=1).long())
+            if config["training"]["loss_func"] in ["cross_entropy", "focal_loss"]:
+                loss = criterion(output_valid, torch.argmax(target, dim=1).long())
             elif config["training"]["loss_func"] == "weighted_dice":
-                loss = criterion(output, target, weight=learnable_class_weights)
+                loss = criterion(output_valid, target, weight=learnable_class_weights)
             else:
-                loss = criterion(output, target)
+                loss = criterion(output_valid, target)
             if config["training"]["metric"] == "iou_per_batch":
                 miou = metrics.mIoU_per_batch(final_label_predictions, target)
                 mean_ious.update(miou.item(), inp.size(0))
@@ -352,13 +366,13 @@ def val(valid_loader, model, criterion, iteration, logger, writer, config):
         iou_per_class = inter_per_class / union_per_class
         mean_iou = np.mean(iou_per_class)
 
-    if writer is None:
+    if config["logging"]["tool"] == "wandb":
         wandb.log({"loss/val": losses.avg}, step=iteration)
         wandb.log({"mIoU/val": mean_iou}, step=iteration)
         if config["logging"]["log_images"]:
             log_images = utils.get_wandb_img(4, inp, target, final_label_predictions, valid_loader.dataset.label_dict)
             wandb.log({"predictions": log_images}, step=iteration)
-    else:
+    elif config["logging"]["tool"] == "tb" and writer != None:
         writer.add_scalar("loss/val", losses.avg, iteration)
         writer.add_scalar("mIoU/val", mean_iou, iteration)
 
