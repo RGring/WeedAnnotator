@@ -1,0 +1,58 @@
+{ "identifier": "sample_training",
+  "arch": {
+        "type": "Unet",
+        "encoder": "resnet34",
+        "pretrained_weights": ""
+  },
+  "data": {
+      "train_data": "/home/rog/data/aerial_farmland/train/images/train_subset_0.001_default.txt",
+      "val_data": "/home/rog/data/aerial_farmland/val/images/val_subset_0.001_default.txt",
+      "labels_to_consider": ["cloud_shadow", "double_plant", "planter_skip", "standing_water", "waterway", "weed_cluster"],
+      "skip_background": true,
+      "aug": {"input_height": 256,
+              "input_width": 256,
+              "mean": [0.4554, 0.4653, 0.4779],
+              "std": [0.1206, 0.1104, 0.1128],
+              "p_flip": 0.5,
+              "p_motion_blur": 0.0,
+              "scale_min": -0.3,
+              "scale_max": 1.0,
+              "rot_deg": 0,
+              "p_color_jitter": 1.0,
+              "jitter_values": [0.2, 0.2, 0.2, 0.1],
+              "p_to_gray": 0.0
+              }
+  },
+  "training": {
+      "optimization": {
+        "lr": 0.001,
+        "final_lr": 0.0001,
+        "lr_encoder": 0.0001,
+        "optimizer": "adam",
+        "start_warmup": 0,
+        "warmup_epochs": 1,
+        "weight_decay": 0.001,
+        "lr_schedule_mode": "cos"
+      },
+      "batch_size": 8,
+      "epochs": 20,
+      "activation": "softmax2d",
+      "loss_func": "BCEWithLogitsLoss",
+      "class_weights": [],
+      "metric": "iou_per_ds",
+      "num_workers": 1,
+      "val_every_epoch": 1,
+      "use_fp16": false
+  },
+  "logging": {
+    "project_name": "rumex_segmentation",
+    "log_path": "sample_data/train_log",
+    "tool": "wandb",
+    "save_ckp_every": 10,
+    "resume": "",
+    "log_images": true
+  },
+  "hyper_param_optim": {
+    "enabled": false
+  }
+}

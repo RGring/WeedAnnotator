@@ -26,7 +26,7 @@ def mask_to_color(pred_mask, skip_background= True):
     num_classes = pred_mask.shape[0]
     img = np.zeros((pred_mask.shape[1], pred_mask.shape[2], 3), dtype=np.uint8)
 
-    for i in range(3):
+    for i in range(num_classes):
         if i == 0 and skip_background:
             continue
         img[np.where(pred_mask[i, :, :] == 1)] = COLORS[i]
@@ -35,9 +35,17 @@ def mask_to_color(pred_mask, skip_background= True):
 def save_mask_on_img(mask, folder, img_props):
     img_file = img_props["img_id"]
     img = cv2.imread(img_file)
-    img = cv2.resize(img, (mask.shape[1], mask.shape[0]))
+    mask = cv2.resize(mask, (img.shape[1], img.shape[0]))
     mask_on_img = cv2.addWeighted(mask, 1, img, 0.8, 0)
     cv2.imwrite(f"{folder}/{os.path.basename(img_file)}", mask_on_img)
+
+def save_mask(mask, folder, img_props):
+    img_file = img_props["img_id"]
+    mask_id = (os.path.basename(img_file)).replace(".jpg", ".png")
+    img = cv2.imread(img_file)
+    mask = cv2.resize(mask, (img.shape[1], img.shape[0]))
+    cv2.imwrite(f"{folder}/{mask_id}", mask)
+
 
 
 def inference(config, model_file, input_data, output):
@@ -68,7 +76,7 @@ def inference(config, model_file, input_data, output):
     )
 
     for i in range(len(infer_dataset)):
-        image, gt_mask, img_props = infer_dataset.get_img_mask_props(i)
+        image, gt_mask, valid_mask, img_props = infer_dataset.get_img_mask_props(i)
 
         x_tensor = image.to(DEVICE).unsqueeze(0)
         pr_mask = model.predict(x_tensor)
@@ -86,17 +94,18 @@ def inference(config, model_file, input_data, output):
             gt_mask = cv2.rotate(gt_mask, cv2.ROTATE_90_COUNTERCLOCKWISE)
 
         save_mask_on_img(pr_mask, output, img_props)
+        save_mask(pr_mask, output, img_props)
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Inference')
-    parser.add_argument('-c', '--config', default='configs/seg_config.json', type=str,
+    parser.add_argument('-c', '--config', default='/home/rog/Unet_resnet34/params.json', type=str,
                         help='The config used to train the model')
-    parser.add_argument('-mo', '--model', default='/home/rog/ckp_0.6.pth.tar', type=str,
+    parser.add_argument('-mo', '--model', default='/home/rog/Unet_resnet34/checkpoints/checkpoint-best.pth.tar', type=str,
                         help='Checkpoint that will be loaded')
-    parser.add_argument('-i', '--input_data', default='/home/rog/data/sugar_beet/val_subset_0.01_default.txt', type=str,
+    parser.add_argument('-i', '--input_data', default='/home/rog/Documents/courses/02506_AIA/AIA-project/rumex_data/data.txt', type=str,
                         help='Folder where to save predcitions')
-    parser.add_argument('-o', '--output', default='/home/rog/temp', type=str,
+    parser.add_argument('-o', '--output', default='/home/rog/Documents/courses/02506_AIA/AIA-project/rumex_data/out', type=str,
                         help='Folder where to save predcitions')
 
     args = parser.parse_args()

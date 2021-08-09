@@ -39,7 +39,7 @@ class WeedDataset(Dataset):
         file_ids.sort()
         for id in file_ids:
             # ToDo: Make optional to only consider foreground masks
-            annotation = AnnotationConverter.read_cvat_by_id(f"{os.path.dirname(id)}/annotations.xml",
+            annotation = AnnotationConverter.read_cvat_by_id(f"{os.path.dirname(id)}/../annotations.xml",
                                                              os.path.basename(id))
             if len(annotation.get_polygons()) == 0 and skip_background:
                 continue
@@ -55,8 +55,8 @@ class WeedDataset(Dataset):
         return len(self.image_list)
 
     def get_img_mask_props(self, index):
-        image, mask = self[index]
-        return image, mask, self._last_img_props
+        image, mask, _ = self[index]
+        return image, mask, _, self._last_img_props
 
     def __getitem__(self, index):
         img_props = self.image_list[index]
