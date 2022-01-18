@@ -1,23 +1,19 @@
-# Semi-automatic pixel-level annotation of grassland weeds
+# Few-leaf Learning: Weed Segmentation in Grasslands
+@ Conference on Intelligent Robots and Systems, IROS 2021
 
-## Introduction
-The WeedAnnotator is applied as following: (i) a human manually annotates a small number of leaves of the considered weed, 
-(ii) the WeedAnnotator takes those annotated leaves and some weed-free background grassland images to generate synthetic training examples and train a deep learning model, 
-(iii) the model is applied on the raw captured dataset and generates mask proposals for the weed plants, 
-(iv) the annotator is manually checking the mask proposals and performs corrections or further annotations as needed.
+Abstract: Autonomous robotic weeding in grasslands requires robust weed segmentation. Deep learning models can provide solutions to this problem, but they need to be trained on large amounts of images, which in the case of grasslands are notoriously difficult to obtain and manually annotate. In this work we introduce Few-leaf Learning, a concept that facilitates the training of accurate weed segmentation models and can lead to easier generation of weed segmentation datasets with minimal human annotation effort. Our approach builds upon the fact that each plant species within the same field has relatively uniform visual characteristics due to similar environmental influences. Thus, we can train a field-and-day-specific weed segmentation model on synthetic training data stemming from just a handful of annotated weed leaves. We demonstrate the efficacy of our approach for different fields and for two common grassland weeds: Rumex obtusifolius (broad-leaved dock) and Cirsium vulgare (spear thistle). Our code is publicly available at https://github.com/RGring/WeedAnnotator.
 
-The WeedAnnotator builds upon the assumption that the visual appearance of the plants belonging to a specific species, captured within one field and one day, has remarkable low variance.
+[--> Paper Download](https://ieeexplore.ieee.org/document/9636770)
 
-![img](./readme_content/into-pic.png "img")
+[--> Watch Video](https://www.youtube.com/watch?v=TtDEi8Y6S_E)
 
-The WeedAnnotator consists of the main steps.
-1. __Synthetic data__ generation by pasting a small number of leaves in weed-free background images.
-2. Mask prediction using a __semantic segmentation model__ (specifically PSP-Net with Resnet18 as backbone) trained on synthetic images only.
-3. Mask quality improvements using __post-processing__ (mainly GrabCut[]).
+<p float="left">
+  <img src="readme_content/intro_v2.png" width="500" /> 
+</p>
 
 ## Usage
-### Instalation
-__Setting up the environment environment__
+### Installation
+__Setting up the environment__
 * Create virtual environment (python3)
     ```
     virtualenv <path_to_venv> --python=python3
@@ -26,7 +22,7 @@ __Setting up the environment environment__
     ```
     <path_to_venv>/bin/pip3 install -r requirements.txt
     ```
-### WeedAnnotator (full pipeline)
+### Few-leaf Learning (full pipeline)
 * The config _configs/weed_annotator.json_ defines the input data and output location of the full pipeline. By default,
 data sample data from _sample_data_ is used. You can disable components and provide direct input.
 * Run the following command to apply the full pipeline to you image data.
@@ -63,7 +59,16 @@ your mask proposals in the webtool.
     ```
     AnnotationConverter.mask_to_cvat(<mask_folder>, <out_annotation_file>, <label_name>)
     ```
-  
+## Citation
+If you find this work useful, please cite:
+```
+@INPROCEEDINGS{few_leaf_learning_2021,  
+author={Güldenring, Ronja and Boukas, Evangelos and Ravn, Ole and Nalpantidis, Lazaros},
+booktitle={2021 IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS)},
+title={Few-leaf Learning: Weed Segmentation in Grasslands},
+year={2021}
+}
+```
 ## Code References
 * Lovasz Loss implementation: [https://github.com/bermanmaxim/LovaszSoftmax](https://github.com/bermanmaxim/LovaszSoftmax)
 * pre-trained PSP-model: [https://github.com/qubvel/segmentation_models.pytorch](https://github.com/qubvel/segmentation_models.pytorch)
